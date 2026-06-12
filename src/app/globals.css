@@ -1,26 +1,333 @@
 @import "tailwindcss";
 
+/* ----------------------------------------------------------------------------
+   Tokens de desenho (do protótipo já validado)
+---------------------------------------------------------------------------- */
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  --paper: #f4f5f2;
+  --surface: #ffffff;
+  --ink: #18222e;
+  --muted: #6f7680;
+  --line: #e5e7e1;
+  --pos: #1c7a52;
+  --neg: #c0492f;
+  --iva: #2563a8;
+  --accent: #117a65;
 }
 
 @theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+  --color-paper: var(--paper);
+  --color-surface: var(--surface);
+  --color-ink: var(--ink);
+  --color-muted: var(--muted);
+  --color-line: var(--line);
+  --color-pos: var(--pos);
+  --color-neg: var(--neg);
+  --color-iva: var(--iva);
+  --color-accent: var(--accent);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+html,
+body {
+  height: 100%;
 }
 
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto,
+    sans-serif;
+  color: var(--ink);
+  background: var(--paper);
+  -webkit-font-smoothing: antialiased;
+}
+
+/* ----------------------------------------------------------------------------
+   Números — monoespaçados, tabulares, alinhados à direita
+---------------------------------------------------------------------------- */
+.al-num {
+  font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  font-variant-numeric: tabular-nums;
+  font-weight: 500;
+}
+.al-mono {
+  font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  font-size: 13px;
+  color: var(--muted);
+}
+.al-pos {
+  color: var(--pos);
+}
+.al-neg {
+  color: var(--neg);
+}
+.al-iva {
+  color: var(--iva);
+  font-weight: 600;
+}
+.al-dim {
+  color: var(--muted);
+  font-weight: 400;
+}
+
+/* ----------------------------------------------------------------------------
+   Topbar + tabs
+---------------------------------------------------------------------------- */
+.al-topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 28px;
+  border-bottom: 1px solid var(--line);
+  background: var(--surface);
+}
+.al-brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+.al-dot {
+  width: 22px;
+  height: 22px;
+  border-radius: 6px;
+  background: var(--accent);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: #fff;
+  font-size: 12px;
+  font-weight: 700;
+}
+.al-brand small {
+  color: var(--muted);
+  font-weight: 400;
+}
+.al-org {
+  font-size: 13px;
+  color: var(--muted);
+  border: 1px solid var(--line);
+  padding: 5px 12px;
+  border-radius: 8px;
+  background: var(--paper);
+}
+.al-tabs {
+  display: flex;
+  gap: 4px;
+  padding: 0 22px;
+  border-bottom: 1px solid var(--line);
+  background: var(--surface);
+}
+.al-tab {
+  padding: 12px 14px;
+  font-size: 14px;
+  color: var(--muted);
+  border-bottom: 2px solid transparent;
+  text-decoration: none;
+}
+.al-tab:hover {
+  color: var(--ink);
+}
+.al-tab.on {
+  color: var(--ink);
+  border-bottom-color: var(--accent);
+  font-weight: 600;
+}
+
+/* ----------------------------------------------------------------------------
+   Layout
+---------------------------------------------------------------------------- */
+.al-wrap {
+  max-width: 1080px;
+  margin: 0 auto;
+  padding: 28px;
+}
+.al-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 20px;
+}
+.al-head h1 {
+  font-size: 24px;
+  font-weight: 650;
+  letter-spacing: -0.02em;
+  margin: 0;
+  display: flex;
+  align-items: center;
+}
+.al-h2 {
+  font-size: 14px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--muted);
+  margin: 28px 0 10px;
+}
+.al-btn {
+  background: var(--ink);
+  color: #fff;
+  border: none;
+  border-radius: 8px;
+  padding: 9px 15px;
+  font-size: 14px;
+  font-weight: 550;
+  cursor: pointer;
+}
+.al-btn:hover {
+  opacity: 0.9;
+}
+.al-btn:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+.al-back {
+  background: none;
+  border: none;
+  color: var(--muted);
+  font-size: 14px;
+  cursor: pointer;
+  padding: 0 0 14px;
+  text-decoration: none;
+  display: inline-block;
+}
+.al-back:hover {
+  color: var(--ink);
+}
+
+/* ----------------------------------------------------------------------------
+   KPIs
+---------------------------------------------------------------------------- */
+.al-kpis {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 14px;
+  margin-bottom: 22px;
+}
+.al-kpi {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 16px 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.al-kpi-iva {
+  border-left: 3px solid var(--iva);
+}
+.al-kpi-lbl {
+  font-size: 12.5px;
+  color: var(--muted);
+}
+.al-kpi .al-num {
+  font-size: 22px;
+}
+
+/* ----------------------------------------------------------------------------
+   Cartões + tabelas
+---------------------------------------------------------------------------- */
+.al-card {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  overflow: hidden;
+}
+.al-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 14px;
+}
+.al-table th {
+  text-align: left;
+  font-size: 11.5px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--muted);
+  font-weight: 600;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--line);
+  background: var(--paper);
+}
+.al-table td {
+  padding: 13px 16px;
+  border-bottom: 1px solid var(--line);
+}
+.al-table tbody tr:last-child td {
+  border-bottom: none;
+}
+.al-table tbody tr[tabindex] {
+  cursor: pointer;
+}
+.al-table tbody tr[tabindex]:hover {
+  background: #fafbf9;
+}
+.al-table tbody tr[tabindex]:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+.al-r {
+  text-align: right;
+}
+.al-c {
+  text-align: center;
+}
+.al-cc-nome {
+  font-weight: 550;
+}
+.al-tag {
+  display: inline-block;
+  margin-left: 9px;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--muted);
+  background: var(--paper);
+  border: 1px solid var(--line);
+  border-radius: 20px;
+  padding: 2px 9px;
+  text-transform: none;
+  letter-spacing: 0;
+}
+.al-chip {
+  font-size: 12px;
+  font-weight: 600;
+  border-radius: 20px;
+  padding: 3px 10px;
+  white-space: nowrap;
+}
+.al-chip-ok {
+  color: var(--pos);
+  background: rgba(28, 122, 82, 0.1);
+}
+.al-chip-no {
+  color: var(--neg);
+  background: rgba(192, 73, 47, 0.1);
+}
+.al-hint {
+  font-size: 13px;
+  color: var(--muted);
+  margin: 12px 2px 0;
+}
+.al-alarme {
+  cursor: help;
+}
+
+@media (max-width: 760px) {
+  .al-kpis {
+    grid-template-columns: repeat(2, 1fr);
+  }
+  .al-wrap {
+    padding: 18px;
+  }
+  .al-table {
+    font-size: 13px;
+  }
+  .al-table th,
+  .al-table td {
+    padding: 10px;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  * {
+    transition: none !important;
+  }
 }

@@ -1,0 +1,331 @@
+"use client";
+
+import { useActionState, useState } from "react";
+import {
+  criarCustoAction,
+  atualizarCustoAction,
+  type CustoState,
+} from "@/lib/actions/custos";
+import { inputStyle, labelStyle } from "./AccaoPanel";
+
+type CC = { id: string; nome: string };
+type Casa = { id: string; nome: string; centro_custo_id: string };
+
+export type LinhaAloc = {
+  centro_custo_id: string;
+  casa_id: string;
+  percentagem: string;
+};
+
+export type ValoresCusto = {
+  fornecedor: string;
+  descricao: string;
+  data: string;
+  valor_base: string;
+  iva: string;
+  pago_por_tipo: "sopro" | "pessoa" | "cc";
+  pago_por_pessoa_id: string;
+  pago_por_cc_id: string;
+  alocacoes: LinhaAloc[];
+};
+
+const linhaVazia = (): LinhaAloc => ({
+  centro_custo_id: "",
+  casa_id: "",
+  percentagem: "",
+});
+
+export function FormularioCusto({
+  centros,
+  casas,
+  modo,
+  custoId,
+  inicial,
+}: {
+  centros: CC[];
+  casas: Casa[];
+  modo: "criar" | "editar";
+  custoId?: string;
+  inicial?: ValoresCusto;
+}) {
+  const [tipo, setTipo] = useState<"sopro" | "cc">(
+    inicial?.pago_por_tipo === "cc" ? "cc" : "sopro",
+  );
+  const [linhas, setLinhas] = useState<LinhaAloc[]>(
+    inicial?.alocacoes && inicial.alocacoes.length > 0
+      ? inicial.alocacoes
+      : [linhaVazia()],
+  );
+  const [state, action, pending] = useActionState<CustoState, FormData>(
+    modo === "criar" ? criarCustoAction : atualizarCustoAction,
+    {},
+  );
+
+  const soma = linhas.reduce((s, l) => s + (Number(l.percentagem) || 0), 0);
+
+  const atualizar = (i: number, campo: keyof LinhaAloc, valor: string) => {
+    setLinhas((ls) =>
+      ls.map((l, j) =>
+        j === i
+          ? {
+              ...l,
+              [campo]: valor,
+              ...(campo === "centro_custo_id" ? { casa_id: "" } : {}),
+            }
+          : l,
+      ),
+    );
+  };
+
+  const alocacoesJson = JSON.stringify(
+    linhas
+      .filter((l) => l.centro_custo_id && Number(l.percentagem) > 0)
+      .map((l) => ({
+        centro_custo_id: l.centro_custo_id,
+        casa_id: l.casa_id || null,
+        percentagem: Number(l.percentagem),
+      })),
+  );
+
+  return (
+    <form action={action} style={{ display: "grid", gap: 16 }}>
+      <input type="hidden" name="alocacoes" value={alocacoesJson} />
+      {modo === "editar" && custoId && (
+        <input type="hidden" name="id" value={custoId} />
+      )}
+
+      <div style={{ display: "grid", gridTemplateColumns: "2fr 1fr", gap: 12 }}>
+        <div>
+          <label style={labelStyle} htmlFor="fornecedor">
+            Fornecedor
+          </label>
+          <input
+            id="fornecedor"
+            name="fornecedor"
+            style={inputStyle}
+            defaultValue={inicial?.fornecedor ?? ""}
+          />
+        </div>
+        <div>
+          <label style={labelStyle} htmlFor="data">
+            Data
+          </label>
+          <input
+            id="data"
+            name="data"
+            type="date"
+            style={inputStyle}
+            defaultValue={inicial?.data ?? ""}
+          />
+        </div>
+      </div>
+
+      <div>
+        <label style={labelStyle} htmlFor="descricao">
+          Descrição (opcional)
+        </label>
+        <input
+          id="descricao"
+          name="descricao"
+          style={inputStyle}
+          defaultValue={inicial?.descricao ?? ""}
+        />
+      </div>
+
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+        <div>
+          <label style={labelStyle} htmlFor="valor_base">
+            Valor base (€)
+          </label>
+          <input
+            id="valor_base"
+            name="valor_base"
+            type="number"
+            step="0.01"
+            min="0"
+            defaultValue={inicial?.valor_base ?? "0"}
+            style={inputStyle}
+          />
+        </div>
+        <div>
+          <label style={labelStyle} htmlFor="iva">
+            IVA (€)
+          </label>
+          <input
+            id="iva"
+            name="iva"
+            type="number"
+            step="0.01"
+            min="0"
+            defaultValue={inicial?.iva ?? "0"}
+            style={inputStyle}
+          />
+        </div>
+      </div>
+
+      <div
+        style={{
+          display: "grid",
+          gridTemplateColumns: tipo === "sopro" ? "1fr" : "1fr 1fr",
+          gap: 12,
+        }}
+      >
+        <div>
+          <label style={labelStyle} htmlFor="pago_por_tipo">
+            Pago por
+          </label>
+          <select
+            id="pago_por_tipo"
+            name="pago_por_tipo"
+            style={inputStyle}
+            value={tipo}
+            onChange={(e) => setTipo(e.target.value as typeof tipo)}
+          >
+            <option value="sopro">Sopro (tesouraria)</option>
+            <option value="cc">Outro CC (conta-corrente)</option>
+          </select>
+        </div>
+        {tipo === "cc" && (
+          <div>
+            <label style={labelStyle} htmlFor="pago_por_cc_id">
+              Centro de custo
+            </label>
+            <select
+              id="pago_por_cc_id"
+              name="pago_por_cc_id"
+              style={inputStyle}
+              defaultValue={inicial?.pago_por_cc_id ?? ""}
+            >
+              <option value="" disabled>
+                Escolhe…
+              </option>
+              {centros.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.nome}
+                </option>
+              ))}
+            </select>
+          </div>
+        )}
+      </div>
+
+      <div>
+        <div
+          style={{
+            display: "flex",
+            justifyContent: "space-between",
+            alignItems: "baseline",
+            marginBottom: 8,
+          }}
+        >
+          <span style={labelStyle}>Alocações por centro de custo / casa</span>
+          <span
+            className={`al-num ${
+              Math.abs(soma - 100) < 0.01 ? "al-pos" : "al-neg"
+            }`}
+            style={{ fontSize: 13 }}
+          >
+            {soma}% / 100%
+          </span>
+        </div>
+
+        <div style={{ display: "grid", gap: 8 }}>
+          {linhas.map((l, i) => {
+            const casasDoCc = casas.filter(
+              (c) => c.centro_custo_id === l.centro_custo_id,
+            );
+            return (
+              <div
+                key={i}
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: "1fr 1fr 90px 32px",
+                  gap: 8,
+                }}
+              >
+                <select
+                  style={inputStyle}
+                  value={l.centro_custo_id}
+                  onChange={(e) => atualizar(i, "centro_custo_id", e.target.value)}
+                >
+                  <option value="">Centro de custo…</option>
+                  {centros.map((c) => (
+                    <option key={c.id} value={c.id}>
+                      {c.nome}
+                    </option>
+                  ))}
+                </select>
+                <select
+                  style={inputStyle}
+                  value={l.casa_id}
+                  onChange={(e) => atualizar(i, "casa_id", e.target.value)}
+                  disabled={!l.centro_custo_id || casasDoCc.length === 0}
+                >
+                  <option value="">Todo o CC</option>
+                  {casasDoCc.map((c) => (
+                    <option key={c.id} value={c.id}>
+                      {c.nome}
+                    </option>
+                  ))}
+                </select>
+                <input
+                  type="number"
+                  step="0.01"
+                  min="0"
+                  max="100"
+                  placeholder="%"
+                  style={{ ...inputStyle, textAlign: "right" }}
+                  value={l.percentagem}
+                  onChange={(e) => atualizar(i, "percentagem", e.target.value)}
+                />
+                <button
+                  type="button"
+                  className="al-back"
+                  style={{ padding: 0 }}
+                  onClick={() =>
+                    setLinhas((ls) =>
+                      ls.length === 1
+                        ? [linhaVazia()]
+                        : ls.filter((_, j) => j !== i),
+                    )
+                  }
+                  title="Remover linha"
+                >
+                  ✕
+                </button>
+              </div>
+            );
+          })}
+        </div>
+
+        <button
+          type="button"
+          className="al-back"
+          style={{ padding: "8px 0 0" }}
+          onClick={() => setLinhas((ls) => [...ls, linhaVazia()])}
+        >
+          + Adicionar alocação
+        </button>
+      </div>
+
+      {state.error && (
+        <p className="al-num al-neg" style={{ fontSize: 13, margin: 0 }}>
+          {state.error}
+        </p>
+      )}
+
+      <button type="submit" className="al-btn" disabled={pending}>
+        {pending
+          ? "A guardar…"
+          : modo === "criar"
+            ? "Registar e lançar"
+            : "Guardar e relançar"}
+      </button>
+      <p className="al-hint" style={{ margin: 0 }}>
+        O custo é lançado no livro via <code>lancar_custo</code>. &quot;Pago
+        por&quot; decide se o financiamento bate em tesouraria, suprimentos ou
+        conta-corrente.
+      </p>
+    </form>
+  );
+}

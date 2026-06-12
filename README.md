@@ -1,36 +1,38 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Sopro — Gestão de Alojamento Local
 
-## Getting Started
+App Next.js 16 (App Router, TS) + Tailwind v4 + Supabase (`@supabase/ssr`), multi-tenant.
 
-First, run the development server:
+## Arranque
 
 ```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+npm install
+cp .env.example .env.local   # preencher URL + chave publicável do Supabase
+npm run dev                  # http://localhost:3000
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Login com Supabase Auth; o `org_id` é resolvido via tabela `membros`.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## Ecrãs
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+Centros de custo (+ reembolso de IVA) · Detalhe do CC (casas, reservas, livro,
+redistribuir conta, pagar ao dono) · Custos (CRUD) · Reservas (CRUD + importação iCal
+manual e automática) · Casas (CRUD) · Documentos (upload/download) · Configuração
+(pessoas, centros de custo/donos, chaves de repartição).
 
-## Learn More
+## Regras de ouro
 
-To learn more about Next.js, take a look at the following resources:
+- Saldos vêm sempre das **views**; escrita no livro **só via RPC**; toda a inserção define
+  `org_id`; negativos a vermelho. RLS isola por organização.
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+## Backend
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+O esquema Supabase já existe — **não recriar**. Detalhes completos (tabelas, views, RPCs,
+colunas geradas, Storage, Edge Function `sync-ical` + cron de iCal) em [`AGENTS.md`](./AGENTS.md).
 
-## Deploy on Vercel
+## Scripts
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+```bash
+npm run build      # build de produção
+npx tsc --noEmit   # typecheck
+npm run lint
+```

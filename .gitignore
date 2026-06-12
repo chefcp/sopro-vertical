@@ -30,8 +30,12 @@ yarn-debug.log*
 yarn-error.log*
 .pnpm-debug.log*
 
-# env files (can opt-in for committing if needed)
+# env files (a chave publicável é segura, mas mantemos .env.local fora do git)
 .env*
+!.env.example
+
+# Claude Code — definições locais (não versionar)
+.claude/settings.local.json
 
 # vercel
 .vercel
