@@ -15,6 +15,8 @@ const TIPOS: PagoPorTipo[] = ["sopro", "cc"];
 type Extraido = {
   campos: {
     fornecedor: string;
+    nif: string | null;
+    atcud: string | null;
     descricao: string | null;
     data: string;
     valor_base: number;
@@ -28,6 +30,8 @@ type Extraido = {
 
 function extrair(formData: FormData): Extraido | { error: string } {
   const fornecedor = String(formData.get("fornecedor") ?? "").trim();
+  const nif = String(formData.get("nif") ?? "").trim();
+  const atcud = String(formData.get("atcud") ?? "").trim();
   const descricao = String(formData.get("descricao") ?? "").trim();
   const data = String(formData.get("data") ?? "");
   const valorBase = Number(formData.get("valor_base"));
@@ -67,6 +71,8 @@ function extrair(formData: FormData): Extraido | { error: string } {
   return {
     campos: {
       fornecedor,
+      nif: nif || null,
+      atcud: atcud || null,
       descricao: descricao || null,
       data,
       valor_base: valorBase,
@@ -91,6 +97,19 @@ export async function criarCustoAction(
   if ("error" in r) return r;
 
   const supabase = await createClient();
+
+  // Deteção de duplicado por ATCUD (fatura repetida).
+  if (r.campos.atcud) {
+    const { data: dup } = await supabase
+      .from("custos")
+      .select("id")
+      .eq("atcud", r.campos.atcud)
+      .maybeSingle();
+    if (dup) {
+      return { error: "Já existe um custo com este ATCUD (fatura repetida)." };
+    }
+  }
+
   const { data: custo, error: errCusto } = await supabase
     .from("custos")
     .insert({ org_id: org, ...r.campos })
@@ -120,9 +139,27 @@ export async function criarCustoAction(
     return { error: `Custo criado, mas o lançamento falhou: ${errRpc.message}` };
   }
 
+  await memorizarFornecedor(supabase, org, r.campos.nif, r.campos.fornecedor);
+
   revalidatePath("/custos");
   revalidatePath("/cc");
   redirect("/custos");
+}
+
+/** Guarda o nome para um NIF (o primeiro fica — ignora nomes posteriores). */
+async function memorizarFornecedor(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  org: string,
+  nif: string | null,
+  nome: string,
+) {
+  if (!nif || !nome) return;
+  await supabase
+    .from("fornecedores")
+    .upsert(
+      { org_id: org, nif, nome },
+      { onConflict: "org_id,nif", ignoreDuplicates: true },
+    );
 }
 
 export async function atualizarCustoAction(
@@ -164,6 +201,8 @@ export async function atualizarCustoAction(
   if (errRpc) {
     return { error: `Guardado, mas o lançamento falhou: ${errRpc.message}` };
   }
+
+  await memorizarFornecedor(supabase, org, r.campos.nif, r.campos.fornecedor);
 
   revalidatePath("/custos");
   revalidatePath("/cc");

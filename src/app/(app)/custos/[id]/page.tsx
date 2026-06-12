@@ -23,22 +23,27 @@ export default async function EditarCustoPage({
   const { data: custoData } = await supabase
     .from("custos")
     .select(
-      "id, fornecedor, descricao, data, valor_base, iva, total, pago_por_tipo, pago_por_pessoa_id, pago_por_cc_id",
+      "id, fornecedor, nif, atcud, descricao, data, valor_base, iva, total, pago_por_tipo, pago_por_pessoa_id, pago_por_cc_id",
     )
     .eq("id", id)
     .maybeSingle();
   if (!custoData) notFound();
-  const c = custoData as Custo;
+  const c = custoData as Custo & { atcud: string | null };
 
-  const [{ data: alocData }, { data: centrosData }, { data: casasData }] =
-    await Promise.all([
-      supabase
-        .from("alocacoes")
-        .select("centro_custo_id, casa_id, percentagem")
-        .eq("custo_id", id),
-      supabase.from("centros_custo").select("id, nome").order("ordem"),
-      supabase.from("casas").select("id, nome, centro_custo_id").order("nome"),
-    ]);
+  const [
+    { data: alocData },
+    { data: centrosData },
+    { data: casasData },
+    { data: fornData },
+  ] = await Promise.all([
+    supabase
+      .from("alocacoes")
+      .select("centro_custo_id, casa_id, percentagem")
+      .eq("custo_id", id),
+    supabase.from("centros_custo").select("id, nome").order("ordem"),
+    supabase.from("casas").select("id, nome, centro_custo_id").order("nome"),
+    supabase.from("fornecedores").select("nif, nome"),
+  ]);
 
   const centros = (centrosData ?? []) as { id: string; nome: string }[];
   const casas = (casasData ?? []) as {
@@ -46,6 +51,10 @@ export default async function EditarCustoPage({
     nome: string;
     centro_custo_id: string;
   }[];
+  const nomesPorNif: Record<string, string> = {};
+  for (const f of (fornData ?? []) as { nif: string; nome: string }[]) {
+    nomesPorNif[f.nif] = f.nome;
+  }
   const alocacoes = ((alocData ?? []) as Alocacao[]).map((a) => ({
     centro_custo_id: a.centro_custo_id,
     casa_id: a.casa_id ?? "",
@@ -55,6 +64,8 @@ export default async function EditarCustoPage({
 
   const inicial = {
     fornecedor: c.fornecedor,
+    nif: c.nif ?? "",
+    atcud: c.atcud ?? "",
     descricao: c.descricao ?? "",
     data: c.data,
     valor_base: String(c.valor_base ?? 0),
@@ -97,6 +108,7 @@ export default async function EditarCustoPage({
           modo="editar"
           custoId={c.id}
           inicial={inicial}
+          nomesPorNif={nomesPorNif}
         />
       </div>
 

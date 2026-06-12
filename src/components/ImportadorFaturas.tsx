@@ -100,11 +100,14 @@ export function ImportadorFaturas({
   // Excel.
   const [excelRows, setExcelRows] = useState<string[][]>([]);
   const [cabecalho, setCabecalho] = useState(true);
-  const [colForn, setColForn] = useState(0);
-  const [colData, setColData] = useState(1);
-  const [colBase, setColBase] = useState(2);
-  const [colIva, setColIva] = useState(3);
-  const [colCc, setColCc] = useState(-1);
+  const [colNif, setColNif] = useState(0);
+  const [colForn, setColForn] = useState(1);
+  const [colData, setColData] = useState(2);
+  const [colBase, setColBase] = useState(3);
+  const [colIva, setColIva] = useState(4);
+  const [colCc, setColCc] = useState(5);
+  const [colPago, setColPago] = useState(6);
+  const [colAtcud, setColAtcud] = useState(7);
 
   const novaLinha = (p: Partial<Rascunho>): Rascunho => ({
     cid: crypto.randomUUID(),
@@ -170,9 +173,18 @@ export function ImportadorFaturas({
   async function descarregarModelo() {
     const XLSX = await import("xlsx");
     const aoa = [
-      ["Fornecedor", "Data (AAAA-MM-DD)", "Base", "IVA", "Centro de custo"],
-      ["EDP Comercial", "2026-05-12", "71.14", "16.36", "Pico"],
-      ["Galp Energia", "2026-05-09", "40.65", "9.35", ""],
+      [
+        "NIF",
+        "Fornecedor",
+        "Data (AAAA-MM-DD)",
+        "Base",
+        "IVA",
+        "Centro de custo",
+        "Pago por",
+        "ATCUD / código",
+      ],
+      ["510698905", "EDP Comercial", "2026-05-12", "71.14", "16.36", "Pico", "Sopro", "JJSH2ZKP-889"],
+      ["504499777", "Galp Energia", "2026-05-09", "40.65", "9.35", "Atafona", "Atafona", ""],
     ];
     const ws = XLSX.utils.aoa_to_sheet(aoa);
     const wb = XLSX.utils.book_new();
@@ -201,14 +213,27 @@ export function ImportadorFaturas({
       .filter((r) => r.some((c) => c.trim() !== ""))
       .map((r) => {
         const get = (i: number) => (i >= 0 ? (r[i] ?? "").trim() : "");
+        const nif = get(colNif);
         const ccNome = get(colCc).toLowerCase();
         const ccMatch = centros.find((c) => c.nome.toLowerCase() === ccNome);
+        // Pago por: "Sopro"/vazio = Sopro; nome de um CC = pago por esse CC.
+        const pagoStr = get(colPago).toLowerCase();
+        const pagoCc =
+          pagoStr && pagoStr !== "sopro"
+            ? centros.find((c) => c.nome.toLowerCase() === pagoStr)
+            : undefined;
+        // Se o NIF já é conhecido, mantém o nome guardado (ignora o do ficheiro).
+        const fornecedor = (nif && nomesPorNif[nif]) || get(colForn);
         return novaLinha({
-          fornecedor: get(colForn),
+          nif,
+          atcud: get(colAtcud),
+          fornecedor,
           data: normalizarData(get(colData)),
           valor_base: parseValor(get(colBase)),
           iva: parseValor(get(colIva)),
           centro_custo_id: ccMatch?.id ?? bCc,
+          pago_por_tipo: pagoCc ? "cc" : "sopro",
+          pago_por_cc_id: pagoCc ? pagoCc.id : "",
         });
       });
     setLinhas((prev) => [...prev, ...novas]);
@@ -416,11 +441,14 @@ export function ImportadorFaturas({
               >
                 {(
                   [
+                    ["NIF (opc.)", colNif, setColNif],
                     ["Fornecedor", colForn, setColForn],
                     ["Data", colData, setColData],
                     ["Base", colBase, setColBase],
                     ["IVA", colIva, setColIva],
                     ["Centro custo (opc.)", colCc, setColCc],
+                    ["Pago por (opc.)", colPago, setColPago],
+                    ["ATCUD (opc.)", colAtcud, setColAtcud],
                   ] as const
                 ).map(([label, val, set]) => (
                   <label key={label} style={{ fontSize: 12, color: "var(--muted)" }}>
@@ -606,12 +634,26 @@ export function ImportadorFaturas({
                       <td>
                         <input
                           value={l.fornecedor}
-                          placeholder={l.nif ? `NIF ${l.nif}` : "Fornecedor"}
+                          placeholder="Fornecedor"
                           onChange={(e) =>
                             setLinha(l.cid, { fornecedor: e.target.value })
                           }
                           style={inputStyle}
                         />
+                        <div style={{ display: "flex", gap: 4, marginTop: 4 }}>
+                          <input
+                            value={l.nif}
+                            placeholder="NIF"
+                            onChange={(e) => setLinha(l.cid, { nif: e.target.value })}
+                            style={{ ...inputStyle, fontSize: 12, padding: "4px 6px" }}
+                          />
+                          <input
+                            value={l.atcud}
+                            placeholder="ATCUD / código"
+                            onChange={(e) => setLinha(l.cid, { atcud: e.target.value })}
+                            style={{ ...inputStyle, fontSize: 12, padding: "4px 6px" }}
+                          />
+                        </div>
                         {(l.descricao || l.ficheiro) && (
                           <span
                             className="al-hint"

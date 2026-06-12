@@ -107,6 +107,7 @@ export async function importarCustosAction(
         data: c.data,
         valor_base: c.valor_base,
         iva: c.iva,
+        nif: c.nif || null,
         pago_por_tipo: c.pago_por_tipo,
         pago_por_pessoa_id: null,
         pago_por_cc_id: c.pago_por_tipo === "cc" ? c.pago_por_cc_id : null,
@@ -152,13 +153,13 @@ export async function importarCustosAction(
       }
     }
 
-    // Memoriza o nome do fornecedor para este NIF (para a próxima fatura).
+    // Memoriza o nome do fornecedor para este NIF (o primeiro fica — não sobrepõe).
     if (c.nif && c.fornecedor.trim()) {
       await supabase
         .from("fornecedores")
         .upsert(
           { org_id: org, nif: c.nif, nome: c.fornecedor.trim() },
-          { onConflict: "org_id,nif" },
+          { onConflict: "org_id,nif", ignoreDuplicates: true },
         );
     }
 

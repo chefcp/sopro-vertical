@@ -68,10 +68,12 @@ App **Next.js (App Router, TypeScript) + Tailwind v4 + Supabase** (auth + `@supa
 - `fontes_reserva (id, org_id, casa_id, tipo['airbnb_ical'|'vrbo_ical'|'lodgify_api'|
   'outro_ical'], referencia, ativo)` — por casa, de onde vêm as reservas (URL iCal ou id
   de propriedade Lodgify).
-- `custos (id, org_id, fornecedor, descricao, data, valor_base, iva, total*,
+- `custos (id, org_id, fornecedor, nif, descricao, data, valor_base, iva, total*,
   pago_por_tipo['sopro'|'pessoa'|'cc'], pago_por_pessoa_id, pago_por_cc_id, atcud)`
   - `atcud` (acrescentada): chave fiscal única do documento (campo H do QR), para detetar
     faturas repetidas na importação. Índice único parcial `(org_id, atcud) WHERE atcud NOT NULL`.
+  - `nif` (acrescentada): NIF do fornecedor, guardado no custo; alimenta a memória
+    `fornecedores(nif→nome)`. Capturado no import e no formulário manual.
 - `alocacoes (id, org_id, custo_id, centro_custo_id, casa_id, percentagem)` — repartição do custo.
 - `lancamentos (id, org_id, data, centro_custo_id, casa_id, conta, valor,
   contraparte_pessoa_id, contraparte_cc_id, origem, origem_id, lote, descricao)` — o LIVRO.
@@ -152,13 +154,21 @@ remove os lançamentos dela).
     `src/lib/fatura-qr.ts` (A=NIF emitente, B=NIF adquirente, F=data, G=nº, H=ATCUD,
     I*/N/O=bases/IVA/total; `valorBase = total − IVA`). Leitura em `src/lib/fatura-scan.ts`.
   - **Excel/CSV:** `SheetJS` (`xlsx`), mapeamento de colunas; botão "Descarregar modelo".
+    Colunas do modelo: `NIF · Fornecedor · Data · Base · IVA · Centro de custo · Pago por · ATCUD`.
+    "Pago por" = "Sopro" ou nome de um CC (= pago por esse CC). Centro de custo e Pago por
+    fazem match por nome.
 - **Gravação** (`importarCustosAction`, `src/lib/actions/importar-custos.ts`): por cada custo
   cria o registo + **uma alocação 100% no CC** escolhido (casa opcional), chama `lancar_custo`
   e arquiva o documento. O ficheiro é **carregado para o bucket pelo browser** (cliente
   Supabase) e a action só liga a linha em `documentos` (evita o limite de body das server
-  actions). Memoriza `fornecedores(nif→nome)`; **deteta duplicados por ATCUD** (BD + lote);
-  marca a vermelho faturas cujo adquirente (B) ≠ `organizacoes.nif`. *(Ponto 1 — leitura por
-  IA de faturas sem QR — fica por preencher; o ecrã de revisão já está pronto a recebê-la.)*
+  actions). Guarda o `nif` no custo e memoriza `fornecedores(nif→nome)` com **"primeiro nome
+  fica"** (`upsert ignoreDuplicates` — se o NIF já é conhecido, mantém o nome guardado e ignora
+  o do ficheiro). **Deteta duplicados por ATCUD** (BD + lote); marca a vermelho faturas cujo
+  adquirente (B) ≠ `organizacoes.nif`. *(Ponto 1 — leitura por IA de faturas sem QR — fica por
+  preencher; o ecrã de revisão já está pronto a recebê-la.)*
+- **Formulário manual de custos** (`FormularioCusto`) também captura **NIF** (auto-preenche o
+  nome pelo NIF conhecido) e **ATCUD/código** (deteta duplicados; aceita códigos estrangeiros
+  tal como estão). O `lancar_custo` e a memória `fornecedores` funcionam igual ao import.
 - **Ações em massa nos custos** (`src/lib/actions/custos.ts`): `mudarPagoPorCustosAction`,
   `mudarCentroCustoCustosAction` (substitui as alocações por 100% num CC),
   `apagarCustosAction`, `duplicarCustoAction` — todas re-chamam `lancar_custo` (ou tiram os

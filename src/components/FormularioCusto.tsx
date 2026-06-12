@@ -19,6 +19,8 @@ export type LinhaAloc = {
 
 export type ValoresCusto = {
   fornecedor: string;
+  nif: string;
+  atcud: string;
   descricao: string;
   data: string;
   valor_base: string;
@@ -41,16 +43,26 @@ export function FormularioCusto({
   modo,
   custoId,
   inicial,
+  nomesPorNif = {},
 }: {
   centros: CC[];
   casas: Casa[];
   modo: "criar" | "editar";
   custoId?: string;
   inicial?: ValoresCusto;
+  nomesPorNif?: Record<string, string>;
 }) {
+  const [nif, setNif] = useState(inicial?.nif ?? "");
+  const [fornecedor, setFornecedor] = useState(inicial?.fornecedor ?? "");
   const [tipo, setTipo] = useState<"sopro" | "cc">(
     inicial?.pago_por_tipo === "cc" ? "cc" : "sopro",
   );
+
+  // Ao sair do NIF, se for conhecido de faturas anteriores, preenche o nome.
+  const aoSairNif = () => {
+    const nome = nomesPorNif[nif.trim()];
+    if (nome && !fornecedor.trim()) setFornecedor(nome);
+  };
   const [linhas, setLinhas] = useState<LinhaAloc[]>(
     inicial?.alocacoes && inicial.alocacoes.length > 0
       ? inicial.alocacoes
@@ -94,7 +106,22 @@ export function FormularioCusto({
         <input type="hidden" name="id" value={custoId} />
       )}
 
-      <div style={{ display: "grid", gridTemplateColumns: "2fr 1fr", gap: 12 }}>
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 2fr 1fr", gap: 12 }}>
+        <div>
+          <label style={labelStyle} htmlFor="nif">
+            NIF do fornecedor
+          </label>
+          <input
+            id="nif"
+            name="nif"
+            inputMode="numeric"
+            placeholder="ex.: 510698905"
+            style={inputStyle}
+            value={nif}
+            onChange={(e) => setNif(e.target.value)}
+            onBlur={aoSairNif}
+          />
+        </div>
         <div>
           <label style={labelStyle} htmlFor="fornecedor">
             Fornecedor
@@ -103,7 +130,8 @@ export function FormularioCusto({
             id="fornecedor"
             name="fornecedor"
             style={inputStyle}
-            defaultValue={inicial?.fornecedor ?? ""}
+            value={fornecedor}
+            onChange={(e) => setFornecedor(e.target.value)}
           />
         </div>
         <div>
@@ -120,16 +148,33 @@ export function FormularioCusto({
         </div>
       </div>
 
-      <div>
-        <label style={labelStyle} htmlFor="descricao">
-          Descrição (opcional)
-        </label>
-        <input
-          id="descricao"
-          name="descricao"
-          style={inputStyle}
-          defaultValue={inicial?.descricao ?? ""}
-        />
+      <div style={{ display: "grid", gridTemplateColumns: "2fr 1fr", gap: 12 }}>
+        <div>
+          <label style={labelStyle} htmlFor="descricao">
+            Descrição (opcional)
+          </label>
+          <input
+            id="descricao"
+            name="descricao"
+            style={inputStyle}
+            defaultValue={inicial?.descricao ?? ""}
+          />
+        </div>
+        <div>
+          <label style={labelStyle} htmlFor="atcud">
+            ATCUD / código
+          </label>
+          <input
+            id="atcud"
+            name="atcud"
+            placeholder="código do documento"
+            style={inputStyle}
+            defaultValue={inicial?.atcud ?? ""}
+          />
+          <span className="al-hint" style={{ fontSize: 12 }}>
+            deteta faturas repetidas; estrangeiras = código tal como está
+          </span>
+        </div>
       </div>
 
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>

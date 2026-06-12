@@ -108,6 +108,7 @@ export type PagoPorTipo = "sopro" | "pessoa" | "cc";
 export interface Custo {
   id: string;
   fornecedor: string;
+  nif: string | null;
   descricao: string | null;
   data: string;
   valor_base: number;
