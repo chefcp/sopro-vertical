@@ -152,6 +152,69 @@ export async function validarReservasAction(
   return { ok: data?.length ?? 0 };
 }
 
+/**
+ * Fecha várias reservas de uma vez: valida + fatura + marca recebida, com
+ * `data_recebimento = data do check-in` de cada reserva (a tesouraria entra
+ * nessa data via trigger). Reservas sem check-in são validadas e faturadas,
+ * mas não marcadas recebidas (faltaria a data).
+ */
+export async function validarFaturarReceberAction(
+  ids: string[],
+): Promise<{ ok: number; semData: number; error?: string }> {
+  const sessao = await getSessaoOrg();
+  if (!sessao?.orgId) return { ok: 0, semData: 0, error: "Sem organização." };
+  if (!ids.length) return { ok: 0, semData: 0 };
+  const supabase = await createClient();
+
+  // Precisamos do check-in de cada reserva — supabase-js não faz col→col,
+  // por isso lê-se primeiro e agrupa-se por data para minimizar updates.
+  const { data: rows, error: errSel } = await supabase
+    .from("reservas")
+    .select("id, data_checkin")
+    .in("id", ids);
+  if (errSel) return { ok: 0, semData: 0, error: errSel.message };
+
+  const porData = new Map<string, string[]>();
+  const semData: string[] = [];
+  for (const r of (rows ?? []) as { id: string; data_checkin: string | null }[]) {
+    if (r.data_checkin) {
+      const lista = porData.get(r.data_checkin) ?? [];
+      lista.push(r.id);
+      porData.set(r.data_checkin, lista);
+    } else {
+      semData.push(r.id);
+    }
+  }
+
+  let ok = 0;
+  for (const [data, lista] of porData) {
+    const { data: upd, error } = await supabase
+      .from("reservas")
+      .update({
+        validada: true,
+        faturado: true,
+        recebido: true,
+        data_recebimento: data,
+      })
+      .in("id", lista)
+      .select("id");
+    if (error) return { ok, semData: 0, error: error.message };
+    ok += upd?.length ?? 0;
+  }
+
+  if (semData.length) {
+    const { error } = await supabase
+      .from("reservas")
+      .update({ validada: true, faturado: true })
+      .in("id", semData);
+    if (error) return { ok, semData: 0, error: error.message };
+  }
+
+  revalidatePath("/reservas");
+  revalidatePath("/cc");
+  return { ok, semData: semData.length };
+}
+
 /** Desvalida (volta a rascunho): o trigger remove-a do livro; fica editável. */
 export async function desvalidarReservaAction(
   formData: FormData,

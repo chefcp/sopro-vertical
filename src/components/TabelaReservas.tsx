@@ -5,7 +5,10 @@ import { useRouter } from "next/navigation";
 import { Valor } from "@/components/Valor";
 import { eur, dataPt } from "@/lib/format";
 import { CANAL_LABEL } from "@/lib/canais";
-import { validarReservasAction } from "@/lib/actions/reservas";
+import {
+  validarReservasAction,
+  validarFaturarReceberAction,
+} from "@/lib/actions/reservas";
 
 export type ReservaVw = {
   id: string;
@@ -83,9 +86,11 @@ export function TabelaReservas({ reservas }: { reservas: ReservaVw[] }) {
   const [aba, setAba] = useState<Aba>("futura");
   const [sel, setSel] = useState<Set<string>>(new Set());
   const [aValidar, startValidar] = useTransition();
+  const [aFechar, startFechar] = useTransition();
   const [fCasa, setFCasa] = useState("");
   const [fCentro, setFCentro] = useState("");
   const [fCanal, setFCanal] = useState("");
+  const [fValidacao, setFValidacao] = useState("");
   const [fHospede, setFHospede] = useState("");
   const [fDe, setFDe] = useState("");
   const [fAte, setFAte] = useState("");
@@ -117,6 +122,8 @@ export function TabelaReservas({ reservas }: { reservas: ReservaVw[] }) {
       if (fCasa && r.casa !== fCasa) return false;
       if (fCentro && r.centro !== fCentro) return false;
       if (fCanal && r.canal !== fCanal) return false;
+      if (fValidacao === "rascunho" && r.validada) return false;
+      if (fValidacao === "fechada" && !r.validada) return false;
       if (fHospede && !(r.hospede ?? "").toLowerCase().includes(fHospede.toLowerCase()))
         return false;
       if (fDe && (r.data_checkin ?? "") < fDe) return false;
@@ -132,7 +139,19 @@ export function TabelaReservas({ reservas }: { reservas: ReservaVw[] }) {
       return sortDir === "asc" ? cmp : -cmp;
     });
     return arr;
-  }, [reservas, aba, fCasa, fCentro, fCanal, fHospede, fDe, fAte, sortKey, sortDir]);
+  }, [
+    reservas,
+    aba,
+    fCasa,
+    fCentro,
+    fCanal,
+    fValidacao,
+    fHospede,
+    fDe,
+    fAte,
+    sortKey,
+    sortDir,
+  ]);
 
   // Só se podem validar rascunhos com valor (não cancelados, não "por preencher").
   const selecionaveis = useMemo(
@@ -166,6 +185,15 @@ export function TabelaReservas({ reservas }: { reservas: ReservaVw[] }) {
       setSel(new Set());
       router.refresh();
     });
+
+  const fecharSelecionadas = () =>
+    startFechar(async () => {
+      await validarFaturarReceberAction([...sel]);
+      setSel(new Set());
+      router.refresh();
+    });
+
+  const aProcessar = aValidar || aFechar;
 
   const ordenarPor = (k: SortKey) => {
     if (k === sortKey) setSortDir((d) => (d === "asc" ? "desc" : "asc"));
@@ -227,6 +255,15 @@ export function TabelaReservas({ reservas }: { reservas: ReservaVw[] }) {
             <option key={c} value={c}>{CANAL_LABEL[c] ?? c}</option>
           ))}
         </select>
+        <select
+          value={fValidacao}
+          onChange={(e) => setFValidacao(e.target.value)}
+          style={inputStyle}
+        >
+          <option value="">Validação (todas)</option>
+          <option value="rascunho">Por validar (rascunho)</option>
+          <option value="fechada">Validadas (fechadas)</option>
+        </select>
         <input
           placeholder="Hóspede…"
           value={fHospede}
@@ -240,13 +277,14 @@ export function TabelaReservas({ reservas }: { reservas: ReservaVw[] }) {
         <label style={{ fontSize: 12, color: "var(--muted)" }}>
           a <input type="date" value={fAte} onChange={(e) => setFAte(e.target.value)} style={inputStyle} />
         </label>
-        {(fCasa || fCentro || fCanal || fHospede || fDe || fAte) && (
+        {(fCasa || fCentro || fCanal || fValidacao || fHospede || fDe || fAte) && (
           <button
             type="button"
             className="al-back"
             style={{ padding: 0 }}
             onClick={() => {
-              setFCasa(""); setFCentro(""); setFCanal(""); setFHospede(""); setFDe(""); setFAte("");
+              setFCasa(""); setFCentro(""); setFCanal(""); setFValidacao("");
+              setFHospede(""); setFDe(""); setFAte("");
             }}
           >
             limpar filtros
@@ -272,9 +310,18 @@ export function TabelaReservas({ reservas }: { reservas: ReservaVw[] }) {
             type="button"
             className="al-btn"
             onClick={validarSelecionadas}
-            disabled={aValidar}
+            disabled={aProcessar}
           >
-            {aValidar ? "A validar…" : "Validar selecionadas"}
+            {aValidar ? "A validar…" : "Validar"}
+          </button>
+          <button
+            type="button"
+            className="al-btn"
+            onClick={fecharSelecionadas}
+            disabled={aProcessar}
+            title="Valida, marca faturada e recebida (data de recebimento = check-in)"
+          >
+            {aFechar ? "A fechar…" : "Validar, faturar e receber"}
           </button>
           <button
             type="button"
@@ -396,8 +443,10 @@ export function TabelaReservas({ reservas }: { reservas: ReservaVw[] }) {
       </div>
       <p className="al-hint">
         Carrega numa linha para editar e validar; num cabeçalho para ordenar.
-        Marca as caixas para <strong>validar várias</strong> de uma vez (só
-        rascunhos com valor).
+        Marca as caixas (só rascunhos com valor) para{" "}
+        <strong>validar várias</strong> de uma vez, ou{" "}
+        <strong>validar, faturar e receber</strong> — esta última pré-regista a
+        data de recebimento igual ao check-in de cada reserva.
       </p>
     </div>
   );
