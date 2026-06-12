@@ -28,6 +28,7 @@ type CamposReserva = {
   estado: string;
   recebido: boolean;
   data_recebimento: string | null;
+  valor_recebido: number | null;
   // Quando o utilizador grava/valida, manda sobre as importações.
   editada_manual: true;
   // false = rascunho (fora do livro); true = fechada (o trigger lança).
@@ -47,6 +48,8 @@ function extrair(formData: FormData): CamposReserva | { error: string } {
   const estado = String(formData.get("estado") ?? "ativa");
   const recebido = formData.get("recebido") === "on";
   const dataRecebimento = String(formData.get("data_recebimento") ?? "");
+  const valorRecebidoRaw = String(formData.get("valor_recebido") ?? "").trim();
+  const valorRecebido = valorRecebidoRaw === "" ? null : Number(valorRecebidoRaw);
   // O botão "Validar e fechar" envia validada=true; "Guardar" envia false.
   const validada = formData.get("validada") === "true";
 
@@ -66,6 +69,9 @@ function extrair(formData: FormData): CamposReserva | { error: string } {
   if (checkin && checkout && checkout < checkin) {
     return { error: "O check-out não pode ser antes do check-in." };
   }
+  if (valorRecebido !== null && (!Number.isFinite(valorRecebido) || valorRecebido < 0)) {
+    return { error: "Valor recebido inválido." };
+  }
 
   return {
     casa_id: casaId,
@@ -81,7 +87,8 @@ function extrair(formData: FormData): CamposReserva | { error: string } {
     hospede: hospede || null,
     estado,
     recebido,
-    data_recebimento: recebido ? dataRecebimento || null : null,
+    data_recebimento: dataRecebimento || null,
+    valor_recebido: valorRecebido,
     editada_manual: true,
     validada,
   };

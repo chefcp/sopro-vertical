@@ -27,7 +27,7 @@ export default async function EditarReservaPage({
   const { data } = await supabase
     .from("reservas")
     .select(
-      "id, casa_id, canal, data_checkin, data_checkout, valor_total, iva_liquidado, faturado, taxa_canal, comissao_stripe, liquido, fora_sopro, ical_uid, externo_id, fonte, hospede, estado, editada_manual, validada, recebido, data_recebimento",
+      "id, casa_id, canal, data_checkin, data_checkout, valor_total, iva_liquidado, faturado, taxa_canal, comissao_stripe, liquido, fora_sopro, ical_uid, externo_id, fonte, hospede, estado, editada_manual, validada, recebido, data_recebimento, valor_recebido",
     )
     .eq("id", id)
     .maybeSingle();
@@ -80,6 +80,7 @@ export default async function EditarReservaPage({
     estado: r.estado ?? "ativa",
     recebido: !!r.recebido,
     data_recebimento: r.data_recebimento ?? "",
+    valor_recebido: r.valor_recebido != null ? String(r.valor_recebido) : "",
     validada: !!r.validada,
   };
 

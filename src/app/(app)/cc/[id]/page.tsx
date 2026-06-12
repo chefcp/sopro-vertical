@@ -6,6 +6,8 @@ import { Kpi } from "@/components/Kpi";
 import { Valor, ValorIva } from "@/components/Valor";
 import { BotaoRedistribuir } from "@/components/BotaoRedistribuir";
 import { BotaoPagarDono } from "@/components/BotaoPagarDono";
+import { BotaoReforcarSuprimentos } from "@/components/BotaoReforcarSuprimentos";
+import { BotaoLancamentoManual } from "@/components/BotaoLancamentoManual";
 import { BotaoTransferir } from "@/components/BotaoTransferir";
 import { eur, dataPt } from "@/lib/format";
 import type {
@@ -110,9 +112,11 @@ export default async function DetalheCcPage({
           {cc.nome}
           {!cc.gera_faturacao && <span className="al-tag">só custos</span>}
         </h1>
-        <div style={{ display: "flex", gap: 10 }}>
+        <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
           <BotaoRedistribuir cc={cc.centro_custo_id} />
           <BotaoPagarDono cc={cc.centro_custo_id} />
+          <BotaoReforcarSuprimentos cc={cc.centro_custo_id} />
+          <BotaoLancamentoManual cc={cc.centro_custo_id} />
           <BotaoTransferir
             cc={cc.centro_custo_id}
             outrosCentros={outrosCentros}

@@ -8,6 +8,8 @@ import {
   pagarDono,
   distribuirReembolsoIva,
   transferirCc,
+  lancarManual,
+  reforcarSuprimentos,
 } from "@/lib/rpc";
 import type { Conta } from "@/lib/types";
 
@@ -90,6 +92,57 @@ export async function transferirCcAction(
   revalidatePath(`/cc/${destino}`);
   revalidatePath("/cc");
   return { mensagem: "Transferência registada." };
+}
+
+/** Reforça os suprimentos de um CC (entra dinheiro: tesouraria + e suprimentos +). */
+export async function reforcarSuprimentosAction(
+  _prev: AccaoState,
+  formData: FormData,
+): Promise<AccaoState> {
+  const cc = String(formData.get("cc") ?? "");
+  const valor = Number(formData.get("valor"));
+
+  if (!cc) return { error: "Centro de custo em falta." };
+  if (!Number.isFinite(valor) || valor <= 0) {
+    return { error: "Indica um valor válido." };
+  }
+
+  const supabase = await createClient();
+  const { error } = await reforcarSuprimentos(supabase, cc, valor);
+  if (error) return { error: error.message };
+
+  revalidatePath(`/cc/${cc}`);
+  revalidatePath("/cc");
+  return { mensagem: "Reforço de suprimentos registado." };
+}
+
+/** Lançamento manual a uma conta de um CC (valor positivo entra, negativo sai). */
+const CONTAS_MANUAIS: Conta[] = ["resultado", "iva", "suprimentos", "tesouraria"];
+
+export async function lancarManualAction(
+  _prev: AccaoState,
+  formData: FormData,
+): Promise<AccaoState> {
+  const cc = String(formData.get("cc") ?? "");
+  const conta = String(formData.get("conta") ?? "") as Conta;
+  const sinal = String(formData.get("sinal") ?? "+");
+  const valorAbs = Number(formData.get("valor"));
+  const descricao = String(formData.get("descricao") ?? "").trim();
+
+  if (!cc) return { error: "Centro de custo em falta." };
+  if (!CONTAS_MANUAIS.includes(conta)) return { error: "Escolhe a conta." };
+  if (!Number.isFinite(valorAbs) || valorAbs <= 0) {
+    return { error: "Indica um valor válido." };
+  }
+  const valor = sinal === "-" ? -valorAbs : valorAbs;
+
+  const supabase = await createClient();
+  const { error } = await lancarManual(supabase, cc, conta, valor, descricao || null);
+  if (error) return { error: error.message };
+
+  revalidatePath(`/cc/${cc}`);
+  revalidatePath("/cc");
+  return { mensagem: "Lançamento manual registado." };
 }
 
 /** Distribui um reembolso de IVA recebido pela organização. */

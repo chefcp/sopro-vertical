@@ -60,6 +60,31 @@ export function transferirCc(
   });
 }
 
+/** Lançamento manual a uma conta de um CC (origem='manual'; valor +/−). */
+export function lancarManual(
+  supabase: SupabaseClient,
+  cc: string,
+  conta: Conta,
+  valor: number,
+  descricao: string | null,
+) {
+  return supabase.rpc("lancar_manual", {
+    p_cc: cc,
+    p_conta: conta,
+    p_valor: valor,
+    p_descricao: descricao,
+  });
+}
+
+/** Reforço de suprimentos (inverso do pagar_dono): tesouraria +valor, suprimentos +valor. */
+export function reforcarSuprimentos(
+  supabase: SupabaseClient,
+  cc: string,
+  valor: number,
+) {
+  return supabase.rpc("reforcar_suprimentos", { p_cc: cc, p_valor: valor });
+}
+
 /** Reparte um custo geral por casas usando os pesos (cria as alocações). */
 export function repartirCusto(
   supabase: SupabaseClient,

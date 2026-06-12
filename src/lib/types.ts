@@ -72,6 +72,7 @@ export interface Reserva {
   validada: boolean;
   recebido: boolean;
   data_recebimento: string | null;
+  valor_recebido: number | null;
 }
 
 /** fontes_reserva — de onde vêm as reservas de cada casa */

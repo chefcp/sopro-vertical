@@ -28,7 +28,8 @@ App **Next.js (App Router, TypeScript) + Tailwind v4 + Supabase** (auth + `@supa
 
 1. **Saldos vêm SEMPRE das views** — nunca recalcular no cliente.
 2. **Escrever no livro é SÓ via RPC** (`lancar_custo`, `lancar_reserva`,
-   `redistribuir_conta`, `distribuir_reembolso_iva`, `pagar_dono`, `repartir_custo`).
+   `redistribuir_conta`, `distribuir_reembolso_iva`, `pagar_dono`, `repartir_custo`,
+   `transferir_cc`, `reforcar_suprimentos`, `lancar_manual`).
    O cliente cria/edita os dados operacionais e chama a RPC; nunca faz INSERT direto em
    `lancamentos`.
 3. **Toda a inserção define `org_id`** (vem da sessão via `getSessaoOrg()`).
@@ -51,14 +52,18 @@ App **Next.js (App Router, TypeScript) + Tailwind v4 + Supabase** (auth + `@supa
 - `reservas (id, org_id, casa_id, canal['airbnb'|'vrbo'|'proprio'|'por_fora'|'outro'],
   data_checkin, data_checkout, valor_total, iva_liquidado, faturado, taxa_canal,
   comissao_stripe, liquido*, fora_sopro, ical_uid, externo_id, fonte, hospede,
-  estado['ativa'|'cancelada'], editada_manual, validada, recebido, data_recebimento)`
+  estado['ativa'|'cancelada'], editada_manual, validada, recebido, data_recebimento,
+  valor_recebido)`
   - Índices únicos parciais `(org_id, ical_uid)` e `(org_id, externo_id)` (WHERE ... NOT NULL)
     ⇒ o upsert do supabase-js por `onConflict` NÃO funciona com eles; faz-se
     select-depois-update/insert manual.
   - **Ciclo de vida (LIVRO via trigger, NÃO chamar `lancar_reserva` na app):** `validada=false`
     = rascunho (fora do livro); `validada=true` = fechada (o trigger `reserva_ledger` lança).
-    Resultado e IVA entram ao validar; a **tesouraria só entra se `recebido=true`**
-    (na `data_recebimento`). `estado='cancelada'` NÃO tira do livro — só `validada`/valor o fazem.
+    Resultado e IVA entram ao validar; a **tesouraria entra com o líquido total se
+    `recebido=true`**, OU com `valor_recebido` se este estiver definido (recebimento
+    parcial — tem prioridade sobre `recebido`), na `data_recebimento`. Atualizar
+    `valor_recebido` re-lança via trigger. `estado='cancelada'` NÃO tira do livro — só
+    `validada`/valor o fazem.
     `editada_manual` só protege das importações.
 - `fontes_reserva (id, org_id, casa_id, tipo['airbnb_ical'|'vrbo_ical'|'lodgify_api'|
   'outro_ical'], referencia, ativo)` — por casa, de onde vêm as reservas (URL iCal ou id
@@ -103,6 +108,12 @@ App **Next.js (App Router, TypeScript) + Tailwind v4 + Supabase** (auth + `@supa
   saldos negativos: tesouraria −valor + suprimentos −valor).
 - `transferir_cc(p_origem_cc, p_destino_cc, p_valor, p_lote?)` — 2 lançamentos
   `cc_corrente` simétricos (origem='manual').
+- `reforcar_suprimentos(p_cc, p_valor, p_lote?)` — inverso do `pagar_dono`: entra
+  dinheiro (`tesouraria +valor` + `suprimentos +valor`). SECURITY DEFINER com guarda
+  `user_orgs()`.
+- `lancar_manual(p_cc, p_conta, p_valor, p_descricao?, p_lote?)` — lança a UMA conta
+  (`resultado`/`iva`/`suprimentos`/`tesouraria`) do CC, valor +/− (origem='manual').
+  Para acertos, comissões bancárias, etc. SECURITY DEFINER com guarda `user_orgs()`.
 
 ## Importação de reservas (TUDO dentro da app — sem Edge Functions)
 

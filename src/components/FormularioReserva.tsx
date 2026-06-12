@@ -27,6 +27,7 @@ export type ValoresReserva = {
   estado: string;
   recebido: boolean;
   data_recebimento: string;
+  valor_recebido: string;
   validada: boolean;
 };
 
@@ -45,6 +46,7 @@ const VAZIO: ValoresReserva = {
   estado: "ativa",
   recebido: false,
   data_recebimento: "",
+  valor_recebido: "",
   validada: false,
 };
 
@@ -339,9 +341,26 @@ export function FormularioReserva({
             checked={v.recebido}
             onChange={(e) => set("recebido", e.target.checked)}
           />
-          Recebido
+          Recebido (total)
         </label>
-        {v.recebido && (
+        <label
+          style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 13, color: "var(--muted)" }}
+        >
+          Recebido (€)
+          <input
+            name="valor_recebido"
+            type="number"
+            step="0.01"
+            min="0"
+            inputMode="decimal"
+            placeholder="parcial"
+            value={v.valor_recebido}
+            onChange={(e) => set("valor_recebido", e.target.value)}
+            style={{ ...inputStyle, width: 110 }}
+            title="Valor já recebido (parcial). Vazio = usa 'Recebido (total)'."
+          />
+        </label>
+        {(v.recebido || v.valor_recebido) && (
           <input
             name="data_recebimento"
             type="date"
@@ -406,7 +425,9 @@ export function FormularioReserva({
       <p className="al-hint" style={{ margin: 0 }}>
         <strong>Guardar</strong> deixa em rascunho (não entra no livro).{" "}
         <strong>Validar e fechar</strong> lança no livro (resultado e IVA; a
-        tesouraria só entra se marcares <em>Recebido</em>).
+        tesouraria entra com o <em>Recebido (total)</em>, ou só o{" "}
+        <em>Recebido (€)</em> parcial se ainda não caiu tudo — atualizas o número
+        à medida que vai caindo).
       </p>
     </form>
   );
