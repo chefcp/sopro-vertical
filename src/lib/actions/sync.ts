@@ -291,6 +291,13 @@ async function sincronizarLodgify(
     for (const b of doImovel) {
       const externoId = String(campo(b, "id") ?? "");
       if (!externoId) continue;
+
+      // Na Lodgify só "Booked" é reserva confirmada; "Open" é um pedido
+      // (enquiry, como um pedido de esclarecimento) e "Declined" é recusado —
+      // nenhum é reserva, por isso ignoram-se (não entram nem ficam no feed).
+      const status = String(campo(b, "status") ?? "").toLowerCase();
+      if (!status.includes("booked")) continue;
+
       idsFeed.add(externoId);
 
       const checkin = (campo(b, "arrival", "date_arrival", "checkIn") ??
@@ -308,12 +315,9 @@ async function sincronizarLodgify(
       const valor = Number(
         campo(b, "total_amount", "totalAmount", "amount", "total") ?? 0,
       );
-      const status = String(campo(b, "status") ?? "").toLowerCase();
+      // Reserva confirmada mas cancelada/apagada na Lodgify → estado cancelada.
       const cancelada =
-        status.includes("declin") ||
-        status.includes("cancel") ||
-        campo(b, "canceled_at") != null ||
-        campo(b, "is_deleted") === true;
+        campo(b, "canceled_at") != null || campo(b, "is_deleted") === true;
 
       const existente = porId.get(externoId);
       if (existente?.editada_manual) continue; // edição do utilizador manda
