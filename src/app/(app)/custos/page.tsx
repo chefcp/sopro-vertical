@@ -1,9 +1,7 @@
 import Link from "next/link";
 import { getSessaoOrg } from "@/lib/org";
 import { createClient } from "@/lib/supabase/server";
-import { Valor, ValorIva } from "@/components/Valor";
-import { LinhaClicavel } from "@/components/LinhaClicavel";
-import { eur, dataPt } from "@/lib/format";
+import { TabelaCustos, type CustoLinha } from "@/components/TabelaCustos";
 import type { Custo } from "@/lib/types";
 
 export const metadata = { title: "Custos · Sopro" };
@@ -40,10 +38,8 @@ export default async function CustosPage() {
       supabase.from("pessoas").select("id, nome").order("nome"),
     ]);
 
-  const custos = (custosData ?? []) as Custo[];
   const centros = (centrosData ?? []) as { id: string; nome: string }[];
   const pessoas = (pessoasData ?? []) as { id: string; nome: string }[];
-
   const ccNome = new Map(centros.map((c) => [c.id, c.nome]));
   const pessoaNome = new Map(pessoas.map((p) => [p.id, p.nome]));
 
@@ -54,6 +50,17 @@ export default async function CustosPage() {
     return ccNome.get(c.pago_por_cc_id ?? "") ?? "CC";
   };
 
+  const custos: CustoLinha[] = ((custosData ?? []) as Custo[]).map((c) => ({
+    id: c.id,
+    fornecedor: c.fornecedor,
+    descricao: c.descricao,
+    data: c.data,
+    valor_base: Number(c.valor_base),
+    iva: Number(c.iva),
+    total: Number(c.total ?? Number(c.valor_base) + Number(c.iva)),
+    pago_por: pagoPor(c),
+  }));
+
   return (
     <div>
       <div className="al-head">
@@ -63,59 +70,7 @@ export default async function CustosPage() {
         </Link>
       </div>
 
-      <div className="al-card">
-        <table className="al-table">
-          <thead>
-            <tr>
-              <th>Fornecedor</th>
-              <th>Data</th>
-              <th className="al-r">Valor base</th>
-              <th className="al-r">IVA</th>
-              <th className="al-r">Total</th>
-              <th>Pago por</th>
-            </tr>
-          </thead>
-          <tbody>
-            {custos.map((c) => (
-              <LinhaClicavel key={c.id} href={`/custos/${c.id}`}>
-                <td>
-                  <span className="al-cc-nome">{c.fornecedor}</span>
-                  {c.descricao && (
-                    <span className="al-dim" style={{ marginLeft: 8 }}>
-                      {c.descricao}
-                    </span>
-                  )}
-                </td>
-                <td className="al-mono">{dataPt(c.data)}</td>
-                <td className="al-r">
-                  <Valor n={-Number(c.valor_base)} />
-                </td>
-                <td className="al-r">
-                  <ValorIva n={Number(c.iva)} />
-                </td>
-                <td className="al-r">
-                  <span className="al-num">
-                    {eur(c.total ?? Number(c.valor_base) + Number(c.iva))}
-                  </span>
-                </td>
-                <td>{pagoPor(c)}</td>
-              </LinhaClicavel>
-            ))}
-            {custos.length === 0 && (
-              <tr>
-                <td colSpan={6} className="al-hint" style={{ padding: 24 }}>
-                  Ainda não há custos registados. Carrega em &quot;Registar
-                  custo&quot;.
-                </td>
-              </tr>
-            )}
-          </tbody>
-        </table>
-      </div>
-      <p className="al-hint">
-        Carrega num custo para editar ou apagar. Cada custo é repartido por
-        centros de custo / casas (alocações) e lançado no livro.
-      </p>
+      <TabelaCustos custos={custos} />
     </div>
   );
 }

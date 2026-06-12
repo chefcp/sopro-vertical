@@ -7,6 +7,8 @@ import {
   apagarReservaAction,
   desvalidarReservaAction,
 } from "@/lib/actions/reservas";
+import { DocumentosEntidade } from "@/components/DocumentosEntidade";
+import { documentosDaEntidade } from "@/lib/documentos";
 import { CANAL_LABEL } from "@/lib/canais";
 import type { Reserva } from "@/lib/types";
 
@@ -61,6 +63,7 @@ export default async function EditarReservaPage({
   }
   const ivasPorCasa: Record<string, number> = {};
   for (const c of casasRaw) ivasPorCasa[c.id] = Number(c.iva_percentagem);
+  const docs = await documentosDaEntidade(supabase, "reserva", r.id);
 
   const inicial = {
     casa_id: r.casa_id,
@@ -123,6 +126,11 @@ export default async function EditarReservaPage({
           taxasPorCanal={taxasPorCanal}
           ivasPorCasa={ivasPorCasa}
         />
+      </div>
+
+      <h2 className="al-h2">Documentos</h2>
+      <div className="al-card" style={{ padding: 20 }}>
+        <DocumentosEntidade entidadeTipo="reserva" entidadeId={r.id} docs={docs} />
       </div>
     </div>
   );

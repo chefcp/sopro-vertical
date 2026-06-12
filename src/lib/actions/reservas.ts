@@ -133,6 +133,25 @@ export async function atualizarReservaAction(
   redirect("/reservas");
 }
 
+/** Valida várias reservas de uma vez (entram no livro via trigger). */
+export async function validarReservasAction(
+  ids: string[],
+): Promise<{ ok: number; error?: string }> {
+  const sessao = await getSessaoOrg();
+  if (!sessao?.orgId) return { ok: 0, error: "Sem organização." };
+  if (!ids.length) return { ok: 0 };
+  const supabase = await createClient();
+  const { data, error } = await supabase
+    .from("reservas")
+    .update({ validada: true })
+    .in("id", ids)
+    .select("id");
+  if (error) return { ok: 0, error: error.message };
+  revalidatePath("/reservas");
+  revalidatePath("/cc");
+  return { ok: data?.length ?? 0 };
+}
+
 /** Desvalida (volta a rascunho): o trigger remove-a do livro; fica editável. */
 export async function desvalidarReservaAction(
   formData: FormData,

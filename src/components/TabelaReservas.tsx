@@ -1,10 +1,11 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { Valor } from "@/components/Valor";
-import { dataPt } from "@/lib/format";
+import { eur, dataPt } from "@/lib/format";
 import { CANAL_LABEL } from "@/lib/canais";
+import { validarReservasAction } from "@/lib/actions/reservas";
 
 export type ReservaVw = {
   id: string;
@@ -79,7 +80,9 @@ const inputStyle: React.CSSProperties = {
 
 export function TabelaReservas({ reservas }: { reservas: ReservaVw[] }) {
   const router = useRouter();
-  const [aba, setAba] = useState<Aba>("todas");
+  const [aba, setAba] = useState<Aba>("futura");
+  const [sel, setSel] = useState<Set<string>>(new Set());
+  const [aValidar, startValidar] = useTransition();
   const [fCasa, setFCasa] = useState("");
   const [fCentro, setFCentro] = useState("");
   const [fCanal, setFCanal] = useState("");
@@ -130,6 +133,39 @@ export function TabelaReservas({ reservas }: { reservas: ReservaVw[] }) {
     });
     return arr;
   }, [reservas, aba, fCasa, fCentro, fCanal, fHospede, fDe, fAte, sortKey, sortDir]);
+
+  // Só se podem validar rascunhos com valor (não cancelados, não "por preencher").
+  const selecionaveis = useMemo(
+    () =>
+      filtradas.filter(
+        (r) => !r.validada && r.estado !== "cancelada" && Number(r.valor_total) > 0,
+      ),
+    [filtradas],
+  );
+  const totalLiquido = filtradas.reduce((s, r) => s + Number(r.liquido), 0);
+  const totalLiquidoIva = filtradas.reduce(
+    (s, r) => s + Number(r.liquido) - Number(r.iva_liquidado),
+    0,
+  );
+
+  const toggle = (id: string) =>
+    setSel((prev) => {
+      const n = new Set(prev);
+      if (n.has(id)) n.delete(id);
+      else n.add(id);
+      return n;
+    });
+  const todosSelecionados =
+    selecionaveis.length > 0 && selecionaveis.every((r) => sel.has(r.id));
+  const toggleTodos = () =>
+    setSel(todosSelecionados ? new Set() : new Set(selecionaveis.map((r) => r.id)));
+
+  const validarSelecionadas = () =>
+    startValidar(async () => {
+      await validarReservasAction([...sel]);
+      setSel(new Set());
+      router.refresh();
+    });
 
   const ordenarPor = (k: SortKey) => {
     if (k === sortKey) setSortDir((d) => (d === "asc" ? "desc" : "asc"));
@@ -218,10 +254,51 @@ export function TabelaReservas({ reservas }: { reservas: ReservaVw[] }) {
         )}
       </div>
 
+      {sel.size > 0 && (
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: 12,
+            marginBottom: 12,
+            padding: "8px 12px",
+            background: "var(--paper)",
+            border: "1px solid var(--line)",
+            borderRadius: 8,
+          }}
+        >
+          <span style={{ fontSize: 13 }}>{sel.size} selecionada(s)</span>
+          <button
+            type="button"
+            className="al-btn"
+            onClick={validarSelecionadas}
+            disabled={aValidar}
+          >
+            {aValidar ? "A validar…" : "Validar selecionadas"}
+          </button>
+          <button
+            type="button"
+            className="al-back"
+            style={{ padding: 0 }}
+            onClick={() => setSel(new Set())}
+          >
+            limpar seleção
+          </button>
+        </div>
+      )}
+
       <div className="al-card">
         <table className="al-table">
           <thead>
             <tr>
+              <th style={{ width: 28 }}>
+                <input
+                  type="checkbox"
+                  checked={todosSelecionados}
+                  onChange={toggleTodos}
+                  title="Selecionar todas (validáveis)"
+                />
+              </th>
               <Th k="casa" label="Casa" />
               <Th k="hospede" label="Hóspede" />
               <Th k="canal" label="Canal" />
@@ -236,6 +313,8 @@ export function TabelaReservas({ reservas }: { reservas: ReservaVw[] }) {
             {filtradas.map((r) => {
               const cancelada = r.estado === "cancelada";
               const porPreencher = !r.validada && Number(r.valor_total) === 0;
+              const selecionavel =
+                !r.validada && !cancelada && Number(r.valor_total) > 0;
               return (
                 <tr
                   key={r.id}
@@ -243,6 +322,15 @@ export function TabelaReservas({ reservas }: { reservas: ReservaVw[] }) {
                   onClick={() => router.push(`/reservas/${r.id}`)}
                   onKeyDown={(e) => e.key === "Enter" && router.push(`/reservas/${r.id}`)}
                 >
+                  <td onClick={(e) => e.stopPropagation()}>
+                    {selecionavel && (
+                      <input
+                        type="checkbox"
+                        checked={sel.has(r.id)}
+                        onChange={() => toggle(r.id)}
+                      />
+                    )}
+                  </td>
                   <td style={cancelada ? { opacity: 0.55 } : undefined}>
                     <span className="al-cc-nome">{r.casa ?? "—"}</span>
                     <span className="al-dim" style={{ marginLeft: 8 }}>{r.centro}</span>
@@ -283,17 +371,33 @@ export function TabelaReservas({ reservas }: { reservas: ReservaVw[] }) {
             })}
             {filtradas.length === 0 && (
               <tr>
-                <td colSpan={8} className="al-hint" style={{ padding: 24 }}>
+                <td colSpan={9} className="al-hint" style={{ padding: 24 }}>
                   Nenhuma reserva com estes filtros.
                 </td>
               </tr>
             )}
           </tbody>
+          {filtradas.length > 0 && (
+            <tfoot>
+              <tr>
+                <td colSpan={7} className="al-r" style={{ fontWeight: 600 }}>
+                  Totais ({filtradas.length})
+                </td>
+                <td className="al-r">
+                  <span className="al-num">{eur(totalLiquido)}</span>
+                </td>
+                <td className="al-r">
+                  <span className="al-num al-pos">{eur(totalLiquidoIva)}</span>
+                </td>
+              </tr>
+            </tfoot>
+          )}
         </table>
       </div>
       <p className="al-hint">
-        {filtradas.length} reserva(s). Carrega numa linha para editar e validar;
-        carrega num cabeçalho para ordenar.
+        Carrega numa linha para editar e validar; num cabeçalho para ordenar.
+        Marca as caixas para <strong>validar várias</strong> de uma vez (só
+        rascunhos com valor).
       </p>
     </div>
   );

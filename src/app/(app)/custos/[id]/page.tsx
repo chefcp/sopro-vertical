@@ -4,6 +4,8 @@ import { getSessaoOrg } from "@/lib/org";
 import { createClient } from "@/lib/supabase/server";
 import { FormularioCusto } from "@/components/FormularioCusto";
 import { apagarCustoAction } from "@/lib/actions/custos";
+import { DocumentosEntidade } from "@/components/DocumentosEntidade";
+import { documentosDaEntidade } from "@/lib/documentos";
 import type { Custo, Alocacao } from "@/lib/types";
 
 export const metadata = { title: "Editar custo · Sopro" };
@@ -49,6 +51,7 @@ export default async function EditarCustoPage({
     casa_id: a.casa_id ?? "",
     percentagem: String(a.percentagem),
   }));
+  const docs = await documentosDaEntidade(supabase, "custo", c.id);
 
   const inicial = {
     fornecedor: c.fornecedor,
@@ -87,6 +90,11 @@ export default async function EditarCustoPage({
           custoId={c.id}
           inicial={inicial}
         />
+      </div>
+
+      <h2 className="al-h2">Documentos</h2>
+      <div className="al-card" style={{ padding: 20 }}>
+        <DocumentosEntidade entidadeTipo="custo" entidadeId={c.id} docs={docs} />
       </div>
     </div>
   );
