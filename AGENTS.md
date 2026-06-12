@@ -39,7 +39,8 @@ App **Next.js (App Router, TypeScript) + Tailwind v4 + Supabase** (auth + `@supa
 
 ## Esquema (tabelas principais)
 
-- `organizacoes (id, nome)`
+- `organizacoes (id, nome, nif, morada)` — `nif`/`morada` (dados fiscais da empresa)
+  editáveis na Configuração; o `nif` valida o adquirente das faturas importadas.
 - `membros (org_id, user_id, papel['dono'|'membro'])` — liga `auth.users` a orgs.
 - `pessoas (id, org_id, nome)`
 - `centros_custo (id, org_id, nome, gera_faturacao, dono_id→pessoas, ordem, criado_em)`
@@ -63,7 +64,9 @@ App **Next.js (App Router, TypeScript) + Tailwind v4 + Supabase** (auth + `@supa
   'outro_ical'], referencia, ativo)` — por casa, de onde vêm as reservas (URL iCal ou id
   de propriedade Lodgify).
 - `custos (id, org_id, fornecedor, descricao, data, valor_base, iva, total*,
-  pago_por_tipo['sopro'|'pessoa'|'cc'], pago_por_pessoa_id, pago_por_cc_id)`
+  pago_por_tipo['sopro'|'pessoa'|'cc'], pago_por_pessoa_id, pago_por_cc_id, atcud)`
+  - `atcud` (acrescentada): chave fiscal única do documento (campo H do QR), para detetar
+    faturas repetidas na importação. Índice único parcial `(org_id, atcud) WHERE atcud NOT NULL`.
 - `alocacoes (id, org_id, custo_id, centro_custo_id, casa_id, percentagem)` — repartição do custo.
 - `lancamentos (id, org_id, data, centro_custo_id, casa_id, conta, valor,
   contraparte_pessoa_id, contraparte_cc_id, origem, origem_id, lote, descricao)` — o LIVRO.
@@ -74,6 +77,9 @@ App **Next.js (App Router, TypeScript) + Tailwind v4 + Supabase** (auth + `@supa
 - `taxas_canal (id, org_id, canal, percentagem)` — % de taxa por canal, editável na
   Configuração; pré-preenche a taxa do canal ao criar/editar reservas. (Acrescentada pelo
   frontend; aditiva, RLS `org_isolation`.)
+- `fornecedores (id, org_id, nif, nome, criado_em)` — memória NIF→nome do fornecedor
+  (`unique (org_id, nif)`), preenchida ao importar faturas; pré-preenche o nome pelo NIF do
+  QR na próxima importação. (Acrescentada; aditiva, RLS `org_isolation`.)
 
 \* **Colunas GERADAS — nunca inserir/atualizar:** `custos.total` (= valor_base + iva) e
 `reservas.liquido` (= valor_total − taxa_canal − comissao_stripe).
@@ -114,6 +120,8 @@ Server action **`sincronizarAction`** (`src/lib/actions/sync.ts`), disparada pel
   (nome completo), datas, estado. **Propõe** ainda `taxa_canal` (= valor × % do canal, de
   `taxas_canal`) e `iva_liquidado` (= % de IVA da casa, incluído no preço). UI: ao escolher
   fonte "Lodgify (API)", a app lista as propriedades pelo nome (`listarPropriedadesLodgify`).
+  - **Só importa `status='Booked'`** (reservas confirmadas). `Open` (pedidos/enquiries) e
+    `Declined` (recusadas) são ignorados — não são reservas.
 - **Cancelamento:** reserva FUTURA que sai do feed → `estado='cancelada'`; PASSADA que sai →
   fica (histórico). Nunca apaga.
 
@@ -122,6 +130,32 @@ importação sobrepõe reservas com `editada_manual=true` (as importações prop
 mandam). A sincronização **nunca** chama `lancar_reserva` (valores por conferir → não lançar
 zeros). `lancar_reserva` só é chamado ao gravar manualmente (e reserva `cancelada` não lança;
 remove os lançamentos dela).
+
+## Importação de faturas e ações em massa (Fase 2A)
+
+- **Importar faturas** (`/custos/importar`, `ImportadorFaturas`) — dois modos:
+  - **QR-Code:** o QR fiscal é lido **no browser** (jsQR; PDF via `pdf.js`). Faturas
+    digitalizadas têm o QR numa camada **JBIG2/JPEG2000** → o `pdf.js` precisa do WASM:
+    `getDocument({ wasmUrl: "/pdfjs/wasm/" })` (os ficheiros estão em `public/pdfjs/wasm/`,
+    copiados de `pdfjs-dist`; recopiar ao atualizar o pacote). Parser em
+    `src/lib/fatura-qr.ts` (A=NIF emitente, B=NIF adquirente, F=data, G=nº, H=ATCUD,
+    I*/N/O=bases/IVA/total; `valorBase = total − IVA`). Leitura em `src/lib/fatura-scan.ts`.
+  - **Excel/CSV:** `SheetJS` (`xlsx`), mapeamento de colunas; botão "Descarregar modelo".
+- **Gravação** (`importarCustosAction`, `src/lib/actions/importar-custos.ts`): por cada custo
+  cria o registo + **uma alocação 100% no CC** escolhido (casa opcional), chama `lancar_custo`
+  e arquiva o documento. O ficheiro é **carregado para o bucket pelo browser** (cliente
+  Supabase) e a action só liga a linha em `documentos` (evita o limite de body das server
+  actions). Memoriza `fornecedores(nif→nome)`; **deteta duplicados por ATCUD** (BD + lote);
+  marca a vermelho faturas cujo adquirente (B) ≠ `organizacoes.nif`. *(Ponto 1 — leitura por
+  IA de faturas sem QR — fica por preencher; o ecrã de revisão já está pronto a recebê-la.)*
+- **Ações em massa nos custos** (`src/lib/actions/custos.ts`): `mudarPagoPorCustosAction`,
+  `mudarCentroCustoCustosAction` (substitui as alocações por 100% num CC),
+  `apagarCustosAction`, `duplicarCustoAction` — todas re-chamam `lancar_custo` (ou tiram os
+  lançamentos, no apagar). A lista de custos mostra CC/casa, etiqueta "sem fatura", filtros
+  (CC, casa, sem-fatura) e exporta para `.xlsx`.
+- **Ações em massa nas reservas** (`src/lib/actions/reservas.ts`): `validarReservasAction(ids)`
+  e `validarFaturarReceberAction(ids)` (valida + fatura + recebido com
+  `data_recebimento = check-in`). A tabela tem filtro de validação (Todas/Por validar/Validadas).
 
 ## Storage de documentos
 
@@ -137,7 +171,7 @@ remove os lançamentos dela).
 - `src/lib/rpc.ts` — wrappers tipados das RPCs.
 - `src/lib/actions/*` — server actions (escrita; sempre com `org_id` e via RPC).
 - `src/app/(app)/*` — shell autenticado (TopBar + Tabs) e ecrãs: `cc`, `cc/[id]`, `casas`,
-  `reservas`, `custos`, `documentos`, `config`.
+  `reservas`, `custos`, `custos/importar`, `documentos`, `config`.
 - Tokens de desenho do protótipo (`prototipo-gestao-al.jsx`) em `src/app/globals.css`.
 
 ## Como correr
