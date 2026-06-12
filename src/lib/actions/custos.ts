@@ -170,6 +170,142 @@ export async function atualizarCustoAction(
   redirect("/custos");
 }
 
+/* ----------------------- Ações em massa --------------------------- */
+
+export type LoteResultado = { ok: number; error?: string };
+
+/** Muda quem pagou em vários custos de uma vez (re-lança cada um). */
+export async function mudarPagoPorCustosAction(
+  ids: string[],
+  pagoPorTipo: PagoPorTipo,
+  pagoPorCcId: string | null,
+): Promise<LoteResultado> {
+  const sessao = await getSessaoOrg();
+  if (!sessao?.orgId) return { ok: 0, error: "Sem organização." };
+  if (!ids.length) return { ok: 0 };
+  if (pagoPorTipo !== "sopro" && pagoPorTipo !== "cc") {
+    return { ok: 0, error: "Tipo de pagamento inválido." };
+  }
+  if (pagoPorTipo === "cc" && !pagoPorCcId) {
+    return { ok: 0, error: "Indica o centro de custo que pagou." };
+  }
+
+  const supabase = await createClient();
+  const { error } = await supabase
+    .from("custos")
+    .update({
+      pago_por_tipo: pagoPorTipo,
+      pago_por_pessoa_id: null,
+      pago_por_cc_id: pagoPorTipo === "cc" ? pagoPorCcId : null,
+    })
+    .in("id", ids);
+  if (error) return { ok: 0, error: error.message };
+
+  for (const id of ids) await lancarCusto(supabase, id);
+  revalidatePath("/custos");
+  revalidatePath("/cc");
+  return { ok: ids.length };
+}
+
+/** Muda o centro de custo (100%, sem casa) de vários custos (re-lança cada um). */
+export async function mudarCentroCustoCustosAction(
+  ids: string[],
+  centroCustoId: string,
+): Promise<LoteResultado> {
+  const sessao = await getSessaoOrg();
+  if (!sessao?.orgId) return { ok: 0, error: "Sem organização." };
+  if (!ids.length) return { ok: 0 };
+  if (!centroCustoId) return { ok: 0, error: "Indica o centro de custo." };
+  const org = sessao.orgId;
+
+  const supabase = await createClient();
+  // Substitui as alocações por uma só, 100% no CC escolhido.
+  await supabase.from("alocacoes").delete().in("custo_id", ids);
+  const { error } = await supabase.from("alocacoes").insert(
+    ids.map((custoId) => ({
+      org_id: org,
+      custo_id: custoId,
+      centro_custo_id: centroCustoId,
+      casa_id: null,
+      percentagem: 100,
+    })),
+  );
+  if (error) return { ok: 0, error: error.message };
+
+  for (const id of ids) await lancarCusto(supabase, id);
+  revalidatePath("/custos");
+  revalidatePath("/cc");
+  return { ok: ids.length };
+}
+
+/** Apaga vários custos de uma vez (remove primeiro os lançamentos do livro). */
+export async function apagarCustosAction(
+  ids: string[],
+): Promise<LoteResultado> {
+  const sessao = await getSessaoOrg();
+  if (!sessao?.orgId) return { ok: 0, error: "Sem organização." };
+  if (!ids.length) return { ok: 0 };
+  const supabase = await createClient();
+  await supabase
+    .from("lancamentos")
+    .delete()
+    .eq("origem", "custo")
+    .in("origem_id", ids);
+  const { error } = await supabase.from("custos").delete().in("id", ids);
+  if (error) return { ok: 0, error: error.message };
+  revalidatePath("/custos");
+  revalidatePath("/cc");
+  return { ok: ids.length };
+}
+
+/** Duplica um custo (útil para recorrentes) e abre a cópia para edição. */
+export async function duplicarCustoAction(formData: FormData): Promise<void> {
+  const sessao = await getSessaoOrg();
+  if (!sessao?.orgId) return;
+  const org = sessao.orgId;
+  const id = String(formData.get("id") ?? "");
+  if (!id) return;
+
+  const supabase = await createClient();
+  const { data: orig } = await supabase
+    .from("custos")
+    .select(
+      "fornecedor, descricao, data, valor_base, iva, pago_por_tipo, pago_por_pessoa_id, pago_por_cc_id",
+    )
+    .eq("id", id)
+    .maybeSingle();
+  if (!orig) return;
+
+  // Não copiamos o ATCUD: a cópia é um novo custo (a chave fiscal é única).
+  const { data: novo, error } = await supabase
+    .from("custos")
+    .insert({ org_id: org, ...orig })
+    .select("id")
+    .single();
+  if (error || !novo) return;
+
+  const { data: alocs } = await supabase
+    .from("alocacoes")
+    .select("centro_custo_id, casa_id, percentagem")
+    .eq("custo_id", id);
+  if (alocs && alocs.length > 0) {
+    await supabase.from("alocacoes").insert(
+      alocs.map((a) => ({
+        org_id: org,
+        custo_id: novo.id,
+        centro_custo_id: a.centro_custo_id,
+        casa_id: a.casa_id,
+        percentagem: a.percentagem,
+      })),
+    );
+  }
+
+  await lancarCusto(supabase, novo.id);
+  revalidatePath("/custos");
+  revalidatePath("/cc");
+  redirect(`/custos/${novo.id}`);
+}
+
 export async function apagarCustoAction(formData: FormData): Promise<void> {
   const sessao = await getSessaoOrg();
   if (!sessao?.orgId) return;

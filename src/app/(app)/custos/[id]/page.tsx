@@ -3,7 +3,7 @@ import { notFound } from "next/navigation";
 import { getSessaoOrg } from "@/lib/org";
 import { createClient } from "@/lib/supabase/server";
 import { FormularioCusto } from "@/components/FormularioCusto";
-import { apagarCustoAction } from "@/lib/actions/custos";
+import { apagarCustoAction, duplicarCustoAction } from "@/lib/actions/custos";
 import { DocumentosEntidade } from "@/components/DocumentosEntidade";
 import { documentosDaEntidade } from "@/lib/documentos";
 import type { Custo, Alocacao } from "@/lib/types";
@@ -75,12 +75,20 @@ export default async function EditarCustoPage({
       </Link>
       <div className="al-head">
         <h1>Editar custo</h1>
-        <form action={apagarCustoAction}>
-          <input type="hidden" name="id" value={c.id} />
-          <button type="submit" className="al-back" style={{ padding: "9px 0" }}>
-            Apagar custo
-          </button>
-        </form>
+        <div style={{ display: "flex", gap: 12, alignItems: "center" }}>
+          <form action={duplicarCustoAction}>
+            <input type="hidden" name="id" value={c.id} />
+            <button type="submit" className="al-back" style={{ padding: "9px 0" }}>
+              Duplicar
+            </button>
+          </form>
+          <form action={apagarCustoAction}>
+            <input type="hidden" name="id" value={c.id} />
+            <button type="submit" className="al-back" style={{ padding: "9px 0" }}>
+              Apagar custo
+            </button>
+          </form>
+        </div>
       </div>
       <div className="al-card" style={{ padding: 20 }}>
         <FormularioCusto
