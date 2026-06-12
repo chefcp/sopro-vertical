@@ -159,6 +159,33 @@ export async function guardarTaxasCanalAction(
   return { mensagem: "Taxas por canal guardadas." };
 }
 
+/* -------------------------- Dados da empresa ----------------------- */
+
+export async function guardarEmpresaAction(
+  _prev: ConfigState,
+  formData: FormData,
+): Promise<ConfigState> {
+  const sessao = await getSessaoOrg();
+  if (!sessao?.orgId) return { error: "Sem organização." };
+
+  const nif = String(formData.get("nif") ?? "").trim();
+  const morada = String(formData.get("morada") ?? "").trim();
+  if (nif && !/^\d{9}$/.test(nif)) {
+    return { error: "O NIF deve ter 9 dígitos." };
+  }
+
+  const supabase = await createClient();
+  const { error } = await supabase
+    .from("organizacoes")
+    .update({ nif: nif || null, morada: morada || null })
+    .eq("id", sessao.orgId);
+  if (error) return { error: error.message };
+
+  revalidar();
+  revalidatePath("/custos/importar");
+  return { mensagem: "Dados da empresa guardados." };
+}
+
 export async function removerChaveAction(formData: FormData): Promise<void> {
   const sessao = await getSessaoOrg();
   if (!sessao?.orgId) return;

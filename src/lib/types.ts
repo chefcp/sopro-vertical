@@ -115,6 +115,7 @@ export interface Custo {
   pago_por_tipo: PagoPorTipo;
   pago_por_pessoa_id: string | null;
   pago_por_cc_id: string | null;
+  atcud: string | null;
 }
 
 /** alocacoes (de um custo por CC/casa) */
@@ -135,6 +136,8 @@ export interface Membro {
 export interface Organizacao {
   id: string;
   nome: string;
+  nif: string | null;
+  morada: string | null;
   criado_em: string;
 }
 

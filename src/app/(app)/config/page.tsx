@@ -3,6 +3,7 @@ import { createClient } from "@/lib/supabase/server";
 import { GestaoCentros } from "@/components/config/GestaoCentros";
 import { GestaoChaves } from "@/components/config/GestaoChaves";
 import { GestaoTaxas } from "@/components/config/GestaoTaxas";
+import { GestaoEmpresa } from "@/components/config/GestaoEmpresa";
 
 export const metadata = { title: "Configuração · Sopro" };
 
@@ -24,18 +25,31 @@ export default async function ConfigPage() {
   }
 
   const supabase = await createClient();
-  const [{ data: centrosData }, { data: chavesData }, { data: taxasData }] =
-    await Promise.all([
-      supabase
-        .from("centros_custo")
-        .select("id, nome, gera_faturacao, ordem")
-        .order("ordem"),
-      supabase
-        .from("chaves_reparticao")
-        .select("id, origem_cc_id, destino_cc_id, conta, peso")
-        .order("criado_em"),
-      supabase.from("taxas_canal").select("canal, percentagem"),
-    ]);
+  const [
+    { data: centrosData },
+    { data: chavesData },
+    { data: taxasData },
+    { data: orgData },
+  ] = await Promise.all([
+    supabase
+      .from("centros_custo")
+      .select("id, nome, gera_faturacao, ordem")
+      .order("ordem"),
+    supabase
+      .from("chaves_reparticao")
+      .select("id, origem_cc_id, destino_cc_id, conta, peso")
+      .order("criado_em"),
+    supabase.from("taxas_canal").select("canal, percentagem"),
+    supabase
+      .from("organizacoes")
+      .select("nif, morada")
+      .eq("id", sessao.orgId)
+      .maybeSingle(),
+  ]);
+  const empresa = (orgData ?? { nif: null, morada: null }) as {
+    nif: string | null;
+    morada: string | null;
+  };
 
   const centros = (centrosData ?? []) as {
     id: string;
@@ -59,6 +73,14 @@ export default async function ConfigPage() {
     <div>
       <div className="al-head">
         <h1>Configuração</h1>
+      </div>
+
+      <h2 className="al-h2">Dados da empresa</h2>
+      <div className="al-card" style={{ padding: 20 }}>
+        <GestaoEmpresa
+          nif={empresa.nif ?? ""}
+          morada={empresa.morada ?? ""}
+        />
       </div>
 
       <h2 className="al-h2">Centros de custo</h2>
