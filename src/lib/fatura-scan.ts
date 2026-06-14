@@ -1,68 +1,47 @@
 /**
  * Leitura do QR-Code de uma fatura no browser — sem servidor, sem chaves.
- * Imagens: desenha num canvas e corre o jsQR.
- * PDF: renderiza cada página com o pdf.js e corre o jsQR sobre o canvas.
- * Tudo importado dinamicamente para não correr no servidor (SSR).
+ * Descodificador: ZXing (zxing-wasm) — robusto em fotos/digitalizações reais.
+ * Imagens: o ZXing lê o ficheiro diretamente.
+ * PDF: o pdf.js renderiza cada página num canvas (com WASM local para a camada
+ * JBIG2/JPEG2000 das faturas digitalizadas) e o ZXing lê a imagem.
+ * WASM do ZXing e worker do pdf.js servidos de `/public` (sem CDN).
  */
 
-type JsQrFn = (
-  data: Uint8ClampedArray,
-  width: number,
-  height: number,
-  opts?: { inversionAttempts?: string },
-) => { data: string } | null;
-
-let jsQrCache: JsQrFn | null = null;
-async function getJsQr(): Promise<JsQrFn> {
-  if (!jsQrCache) {
-    const mod = await import("jsqr");
-    jsQrCache = (mod.default ?? mod) as JsQrFn;
+let zxingConfigurado = false;
+async function getReadBarcodes() {
+  const mod = await import("zxing-wasm/reader");
+  if (!zxingConfigurado) {
+    mod.setZXingModuleOverrides({
+      locateFile: (path: string, prefix: string) =>
+        path.endsWith(".wasm") ? "/zxing/zxing_reader.wasm" : prefix + path,
+    });
+    zxingConfigurado = true;
   }
-  return jsQrCache;
+  return mod.readBarcodes;
 }
 
-function scanCanvas(
-  jsQR: JsQrFn,
-  ctx: CanvasRenderingContext2D,
-  w: number,
-  h: number,
-): string | null {
-  const img = ctx.getImageData(0, 0, w, h);
-  const res = jsQR(img.data, img.width, img.height, {
-    inversionAttempts: "attemptBoth",
+async function lerCodigo(input: Blob | ImageData): Promise<string | null> {
+  const readBarcodes = await getReadBarcodes();
+  const res = await readBarcodes(input, {
+    formats: ["QRCode"],
+    tryHarder: true,
+    maxNumberOfSymbols: 1,
   });
-  return res?.data ?? null;
+  const t = res.find((r) => r.text)?.text;
+  return t || null;
 }
 
 async function lerImagem(file: File): Promise<string | null> {
-  const jsQR = await getJsQr();
-  const bitmap = await createImageBitmap(file);
-  // Limita a dimensão para não rebentar memória em fotos enormes.
-  const max = 2000;
-  const escala = Math.min(1, max / Math.max(bitmap.width, bitmap.height));
-  const w = Math.round(bitmap.width * escala);
-  const h = Math.round(bitmap.height * escala);
-  const canvas = document.createElement("canvas");
-  canvas.width = w;
-  canvas.height = h;
-  const ctx = canvas.getContext("2d", { willReadFrequently: true });
-  if (!ctx) return null;
-  ctx.drawImage(bitmap, 0, 0, w, h);
-  bitmap.close();
-  return scanCanvas(jsQR, ctx, w, h);
+  // O ZXing descodifica a imagem diretamente (lida com rotação/contraste).
+  return lerCodigo(file);
 }
 
 async function lerPdf(file: File): Promise<string | null> {
-  const jsQR = await getJsQr();
   const pdfjs = await import("pdfjs-dist");
-  pdfjs.GlobalWorkerOptions.workerSrc = new URL(
-    "pdfjs-dist/build/pdf.worker.min.mjs",
-    import.meta.url,
-  ).toString();
+  // Worker e WASM servidos localmente (evita incertezas do empacotador/CDN).
+  pdfjs.GlobalWorkerOptions.workerSrc = "/pdfjs/pdf.worker.min.mjs";
 
   const buf = await file.arrayBuffer();
-  // wasmUrl é OBRIGATÓRIO no browser para descodificar JBIG2/JPEG2000 — muitas
-  // faturas digitalizadas têm o QR nessa camada; sem isto, fica em branco.
   const doc = await pdfjs.getDocument({
     data: buf,
     wasmUrl: "/pdfjs/wasm/",
@@ -71,8 +50,7 @@ async function lerPdf(file: File): Promise<string | null> {
     const maxPaginas = Math.min(doc.numPages, 5);
     for (let p = 1; p <= maxPaginas; p++) {
       const page = await doc.getPage(p);
-      // O QR fiscal é pequeno; tenta-se em duas escalas (a 2ª, maior, ajuda
-      // em digitalizações de menor qualidade).
+      // O QR fiscal é pequeno; tenta-se em duas escalas.
       for (const escala of [3, 4.5]) {
         const viewport = page.getViewport({ scale: escala });
         const canvas = document.createElement("canvas");
@@ -81,7 +59,8 @@ async function lerPdf(file: File): Promise<string | null> {
         const ctx = canvas.getContext("2d", { willReadFrequently: true });
         if (!ctx) continue;
         await page.render({ canvas, viewport }).promise;
-        const r = scanCanvas(jsQR, ctx, canvas.width, canvas.height);
+        const im = ctx.getImageData(0, 0, canvas.width, canvas.height);
+        const r = await lerCodigo(im);
         if (r) {
           page.cleanup();
           return r;
