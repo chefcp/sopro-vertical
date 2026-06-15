@@ -23,12 +23,12 @@ export default async function EditarCustoPage({
   const { data: custoData } = await supabase
     .from("custos")
     .select(
-      "id, fornecedor, nif, atcud, descricao, data, valor_base, iva, total, pago_por_tipo, pago_por_pessoa_id, pago_por_cc_id",
+      "id, fornecedor, nif, atcud, descricao, data, data_pagamento, valor_base, iva, total, taxa_plataforma, pago_por_tipo, pago_por_pessoa_id, pago_por_cc_id",
     )
     .eq("id", id)
     .maybeSingle();
   if (!custoData) notFound();
-  const c = custoData as Custo & { atcud: string | null };
+  const c = custoData as Custo;
 
   const [
     { data: alocData },
@@ -68,10 +68,10 @@ export default async function EditarCustoPage({
     atcud: c.atcud ?? "",
     descricao: c.descricao ?? "",
     data: c.data,
+    data_pagamento: c.data_pagamento ?? "",
     valor_base: String(c.valor_base ?? 0),
     iva: String(c.iva ?? 0),
-    pago_por_tipo: c.pago_por_tipo,
-    pago_por_pessoa_id: c.pago_por_pessoa_id ?? "",
+    taxa_plataforma: !!c.taxa_plataforma,
     pago_por_cc_id: c.pago_por_cc_id ?? "",
     alocacoes:
       alocacoes.length > 0

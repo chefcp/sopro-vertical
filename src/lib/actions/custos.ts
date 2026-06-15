@@ -9,9 +9,6 @@ import type { PagoPorTipo, Alocacao } from "@/lib/types";
 
 export type CustoState = { error?: string; mensagem?: string };
 
-// Ponto 9: o custo é pago pela Sopro ou por outro CC (já não por pessoa).
-const TIPOS: PagoPorTipo[] = ["sopro", "cc"];
-
 type Extraido = {
   campos: {
     fornecedor: string;
@@ -24,6 +21,8 @@ type Extraido = {
     pago_por_tipo: PagoPorTipo;
     pago_por_pessoa_id: string | null;
     pago_por_cc_id: string | null;
+    taxa_plataforma: boolean;
+    data_pagamento: string | null;
   };
   alocacoes: Alocacao[];
 };
@@ -36,8 +35,9 @@ function extrair(formData: FormData): Extraido | { error: string } {
   const data = String(formData.get("data") ?? "");
   const valorBase = Number(formData.get("valor_base"));
   const iva = Number(formData.get("iva"));
-  const pagoPorTipo = String(formData.get("pago_por_tipo") ?? "") as PagoPorTipo;
+  const taxaPlataforma = formData.get("taxa_plataforma") === "on";
   const pagoPorCc = String(formData.get("pago_por_cc_id") ?? "");
+  const dataPagamento = String(formData.get("data_pagamento") ?? "");
 
   if (!fornecedor) return { error: "Indica o fornecedor." };
   if (!data) return { error: "Indica a data." };
@@ -45,9 +45,10 @@ function extrair(formData: FormData): Extraido | { error: string } {
     return { error: "Valor base inválido." };
   }
   if (!Number.isFinite(iva) || iva < 0) return { error: "IVA inválido." };
-  if (!TIPOS.includes(pagoPorTipo)) return { error: "Indica quem pagou." };
-  if (pagoPorTipo === "cc" && !pagoPorCc) {
-    return { error: "Indica o centro de custo que pagou." };
+  if (!taxaPlataforma && !pagoPorCc) {
+    return {
+      error: "Indica o centro de custo que pagou (ou marca 'taxa de plataforma').",
+    };
   }
 
   let alocacoes: Alocacao[];
@@ -77,9 +78,11 @@ function extrair(formData: FormData): Extraido | { error: string } {
       data,
       valor_base: valorBase,
       iva,
-      pago_por_tipo: pagoPorTipo,
+      pago_por_tipo: "cc",
       pago_por_pessoa_id: null,
-      pago_por_cc_id: pagoPorTipo === "cc" ? pagoPorCc : null,
+      pago_por_cc_id: taxaPlataforma ? null : pagoPorCc || null,
+      taxa_plataforma: taxaPlataforma,
+      data_pagamento: taxaPlataforma ? null : dataPagamento || null,
     },
     alocacoes,
   };

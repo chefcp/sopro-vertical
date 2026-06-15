@@ -29,6 +29,7 @@ type Rascunho = {
   casa_id: string;
   pago_por_tipo: PagoPorTipo;
   pago_por_cc_id: string;
+  taxa_plataforma: boolean;
   file: File | null;
   ficheiro: string | null;
   aviso?: string;
@@ -123,6 +124,7 @@ export function ImportadorFaturas({
     casa_id: bCasa,
     pago_por_tipo: bPagoTipo,
     pago_por_cc_id: bPagoCc,
+    taxa_plataforma: false,
     file: null,
     ficheiro: null,
     ...p,
@@ -324,6 +326,7 @@ export function ImportadorFaturas({
           casa_id: l.casa_id || null,
           pago_por_tipo: l.pago_por_tipo,
           pago_por_cc_id: l.pago_por_tipo === "cc" ? l.pago_por_cc_id : null,
+          taxa_plataforma: l.taxa_plataforma,
           nif: l.nif || null,
           atcud: l.atcud || null,
           storage_path,
@@ -581,7 +584,7 @@ export function ImportadorFaturas({
                 onChange={(e) => setBPagoTipo(e.target.value as PagoPorTipo)}
                 style={{ ...inputStyle, width: "auto" }}
               >
-                <option value="sopro">Sopro</option>
+                <option value="sopro">Geral (Sopro)</option>
                 <option value="cc">Centro de custo</option>
               </select>
             </label>
@@ -734,36 +737,50 @@ export function ImportadorFaturas({
                         </select>
                       </td>
                       <td>
-                        <div style={{ display: "flex", gap: 4 }}>
-                          <select
-                            value={l.pago_por_tipo}
+                        <label
+                          style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 11, color: "var(--muted)", marginBottom: 4 }}
+                        >
+                          <input
+                            type="checkbox"
+                            checked={l.taxa_plataforma}
                             onChange={(e) =>
-                              setLinha(l.cid, {
-                                pago_por_tipo: e.target.value as PagoPorTipo,
-                              })
+                              setLinha(l.cid, { taxa_plataforma: e.target.checked })
                             }
-                            style={inputStyle}
-                          >
-                            <option value="sopro">Sopro</option>
-                            <option value="cc">CC</option>
-                          </select>
-                          {l.pago_por_tipo === "cc" && (
+                          />
+                          taxa plataforma
+                        </label>
+                        {!l.taxa_plataforma && (
+                          <div style={{ display: "flex", gap: 4 }}>
                             <select
-                              value={l.pago_por_cc_id}
+                              value={l.pago_por_tipo}
                               onChange={(e) =>
-                                setLinha(l.cid, { pago_por_cc_id: e.target.value })
+                                setLinha(l.cid, {
+                                  pago_por_tipo: e.target.value as PagoPorTipo,
+                                })
                               }
                               style={inputStyle}
                             >
-                              <option value="">—</option>
-                              {centros.map((c) => (
-                                <option key={c.id} value={c.id}>
-                                  {c.nome}
-                                </option>
-                              ))}
+                              <option value="sopro">Geral</option>
+                              <option value="cc">CC</option>
                             </select>
-                          )}
-                        </div>
+                            {l.pago_por_tipo === "cc" && (
+                              <select
+                                value={l.pago_por_cc_id}
+                                onChange={(e) =>
+                                  setLinha(l.cid, { pago_por_cc_id: e.target.value })
+                                }
+                                style={inputStyle}
+                              >
+                                <option value="">—</option>
+                                {centros.map((c) => (
+                                  <option key={c.id} value={c.id}>
+                                    {c.nome}
+                                  </option>
+                                ))}
+                              </select>
+                            )}
+                          </div>
+                        )}
                       </td>
                       <td>
                         <button

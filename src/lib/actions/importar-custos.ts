@@ -17,6 +17,7 @@ export type CustoImportado = {
   casa_id: string | null;
   pago_por_tipo: PagoPorTipo;
   pago_por_cc_id: string | null;
+  taxa_plataforma: boolean;
   // Fiscais (do QR): NIF do emitente e ATCUD (chave única do documento).
   nif: string | null;
   atcud: string | null;
@@ -37,11 +38,13 @@ function valida(c: CustoImportado): string | null {
   if (!c.centro_custo_id) return "centro de custo em falta";
   if (!Number.isFinite(c.valor_base) || c.valor_base < 0) return "base inválida";
   if (!Number.isFinite(c.iva) || c.iva < 0) return "IVA inválido";
-  if (c.pago_por_tipo !== "sopro" && c.pago_por_tipo !== "cc") {
-    return "pago por inválido";
-  }
-  if (c.pago_por_tipo === "cc" && !c.pago_por_cc_id) {
-    return "centro de custo pagador em falta";
+  if (!c.taxa_plataforma) {
+    if (c.pago_por_tipo !== "sopro" && c.pago_por_tipo !== "cc") {
+      return "pago por inválido";
+    }
+    if (c.pago_por_tipo === "cc" && !c.pago_por_cc_id) {
+      return "centro de custo pagador em falta";
+    }
   }
   return null;
 }
@@ -62,6 +65,16 @@ export async function importarCustosAction(
   }
 
   const supabase = await createClient();
+
+  // CC Geral (representa a Sopro) — pagador por defeito quando não vem outro.
+  const { data: geral } = await supabase
+    .from("centros_custo")
+    .select("id")
+    .ilike("nome", "geral")
+    .limit(1)
+    .maybeSingle();
+  const geralId = (geral as { id: string } | null)?.id ?? null;
+
   let ok = 0;
   let duplicadas = 0;
   const erros: string[] = [];
@@ -108,9 +121,16 @@ export async function importarCustosAction(
         valor_base: c.valor_base,
         iva: c.iva,
         nif: c.nif || null,
-        pago_por_tipo: c.pago_por_tipo,
+        taxa_plataforma: c.taxa_plataforma,
+        pago_por_tipo: "cc",
         pago_por_pessoa_id: null,
-        pago_por_cc_id: c.pago_por_tipo === "cc" ? c.pago_por_cc_id : null,
+        // Sem taxa: pagador = o CC indicado, ou o Geral (Sopro) por defeito.
+        pago_por_cc_id: c.taxa_plataforma
+          ? null
+          : (c.pago_por_tipo === "cc" && c.pago_por_cc_id
+              ? c.pago_por_cc_id
+              : geralId),
+        data_pagamento: c.taxa_plataforma ? null : c.data,
         atcud: c.atcud || null,
       })
       .select("id")

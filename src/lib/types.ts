@@ -118,6 +118,8 @@ export interface Custo {
   pago_por_pessoa_id: string | null;
   pago_por_cc_id: string | null;
   atcud: string | null;
+  taxa_plataforma: boolean;
+  data_pagamento: string | null;
 }
 
 /** alocacoes (de um custo por CC/casa) */

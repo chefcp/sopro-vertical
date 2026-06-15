@@ -23,10 +23,10 @@ export type ValoresCusto = {
   atcud: string;
   descricao: string;
   data: string;
+  data_pagamento: string;
   valor_base: string;
   iva: string;
-  pago_por_tipo: "sopro" | "pessoa" | "cc";
-  pago_por_pessoa_id: string;
+  taxa_plataforma: boolean;
   pago_por_cc_id: string;
   alocacoes: LinhaAloc[];
 };
@@ -54,9 +54,24 @@ export function FormularioCusto({
 }) {
   const [nif, setNif] = useState(inicial?.nif ?? "");
   const [fornecedor, setFornecedor] = useState(inicial?.fornecedor ?? "");
-  const [tipo, setTipo] = useState<"sopro" | "cc">(
-    inicial?.pago_por_tipo === "cc" ? "cc" : "sopro",
+  const geralId =
+    centros.find((c) => c.nome.toLowerCase() === "geral")?.id ?? "";
+  const [taxaPlataforma, setTaxaPlataforma] = useState(
+    inicial?.taxa_plataforma ?? false,
   );
+  const [pagoPorCc, setPagoPorCc] = useState(
+    inicial?.pago_por_cc_id || geralId,
+  );
+  const [dataFatura, setDataFatura] = useState(inicial?.data ?? "");
+  const [dataPagamento, setDataPagamento] = useState(
+    inicial?.data_pagamento ?? inicial?.data ?? "",
+  );
+  // A data de pagamento acompanha a da fatura enquanto não for tocada.
+  const onData = (v: string) =>
+    setDataFatura((prev) => {
+      setDataPagamento((dp) => (dp === "" || dp === prev ? v : dp));
+      return v;
+    });
 
   // Ao sair do NIF, se for conhecido de faturas anteriores, preenche o nome.
   const aoSairNif = () => {
@@ -143,7 +158,8 @@ export function FormularioCusto({
             name="data"
             type="date"
             style={inputStyle}
-            defaultValue={inicial?.data ?? ""}
+            value={dataFatura}
+            onChange={(e) => onData(e.target.value)}
           />
         </div>
       </div>
@@ -208,48 +224,56 @@ export function FormularioCusto({
         </div>
       </div>
 
-      <div
-        style={{
-          display: "grid",
-          gridTemplateColumns: tipo === "sopro" ? "1fr" : "1fr 1fr",
-          gap: 12,
-        }}
-      >
-        <div>
-          <label style={labelStyle} htmlFor="pago_por_tipo">
-            Pago por
-          </label>
-          <select
-            id="pago_por_tipo"
-            name="pago_por_tipo"
-            style={inputStyle}
-            value={tipo}
-            onChange={(e) => setTipo(e.target.value as typeof tipo)}
-          >
-            <option value="sopro">Sopro (tesouraria)</option>
-            <option value="cc">Outro CC (conta-corrente)</option>
-          </select>
-        </div>
-        {tipo === "cc" && (
-          <div>
-            <label style={labelStyle} htmlFor="pago_por_cc_id">
-              Centro de custo
-            </label>
-            <select
-              id="pago_por_cc_id"
-              name="pago_por_cc_id"
-              style={inputStyle}
-              defaultValue={inicial?.pago_por_cc_id ?? ""}
-            >
-              <option value="" disabled>
-                Escolhe…
-              </option>
-              {centros.map((c) => (
-                <option key={c.id} value={c.id}>
-                  {c.nome}
+      <div style={{ display: "grid", gap: 12 }}>
+        <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 14 }}>
+          <input
+            type="checkbox"
+            name="taxa_plataforma"
+            checked={taxaPlataforma}
+            onChange={(e) => setTaxaPlataforma(e.target.checked)}
+          />
+          Taxa de plataforma (Airbnb/VRBO/Stripe) — só Resultado e IVA, sem pagamento
+        </label>
+        {!taxaPlataforma && (
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+            <div>
+              <label style={labelStyle} htmlFor="pago_por_cc_id">
+                Pago por (centro de custo)
+              </label>
+              <select
+                id="pago_por_cc_id"
+                name="pago_por_cc_id"
+                style={inputStyle}
+                value={pagoPorCc}
+                onChange={(e) => setPagoPorCc(e.target.value)}
+              >
+                <option value="" disabled>
+                  Escolhe…
                 </option>
-              ))}
-            </select>
+                {centros.map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {c.nome}
+                    {c.id === geralId ? " (Sopro)" : ""}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label style={labelStyle} htmlFor="data_pagamento">
+                Data de pagamento
+              </label>
+              <input
+                id="data_pagamento"
+                name="data_pagamento"
+                type="date"
+                style={inputStyle}
+                value={dataPagamento}
+                onChange={(e) => setDataPagamento(e.target.value)}
+              />
+              <span className="al-hint" style={{ fontSize: 12 }}>
+                vazio = ainda não pago
+              </span>
+            </div>
           </div>
         )}
       </div>
@@ -367,9 +391,10 @@ export function FormularioCusto({
             : "Guardar e relançar"}
       </button>
       <p className="al-hint" style={{ margin: 0 }}>
-        O custo é lançado no livro via <code>lancar_custo</code>. &quot;Pago
-        por&quot; decide se o financiamento bate em tesouraria, suprimentos ou
-        conta-corrente.
+        Resultado (s/ IVA) e IVA entram na data da fatura. O pagamento (pelo CC
+        escolhido — o Geral representa a Sopro) entra na data de pagamento:
+        Suprimentos + e Tesouraria + no pagador, Tesouraria − no CC do custo.
+        Taxas de plataforma não têm pagamento (já vêm descontadas no recebimento).
       </p>
     </form>
   );

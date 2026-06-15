@@ -70,8 +70,17 @@ App **Next.js (App Router, TypeScript) + Tailwind v4 + Supabase** (auth + `@supa
 - `fontes_reserva (id, org_id, casa_id, tipo['airbnb_ical'|'vrbo_ical'|'lodgify_api'|
   'outro_ical'], referencia, ativo)` — por casa, de onde vêm as reservas (URL iCal ou id
   de propriedade Lodgify).
-- `custos (id, org_id, fornecedor, nif, descricao, data, valor_base, iva, total*,
-  pago_por_tipo['sopro'|'pessoa'|'cc'], pago_por_pessoa_id, pago_por_cc_id, atcud)`
+- `custos (id, org_id, fornecedor, nif, descricao, data, data_pagamento, valor_base, iva,
+  total*, taxa_plataforma, pago_por_tipo, pago_por_pessoa_id, pago_por_cc_id, atcud)`
+  - **Modelo de pagamento (Fase 1):** "pago por" é SEMPRE um CC (o **Geral** representa a
+    Sopro; já não há `'sopro'`). `lancar_custo`: Resultado −base e IVA +iva no(s) CC(s) do
+    custo (data da fatura); pagamento (na `data_pagamento`) = **Suprimentos +total e
+    Tesouraria +total no CC pagador, Tesouraria −total no CC do custo** (quando pagador=CC do
+    custo, as tesourarias anulam → Suprimentos +). Sem `data_pagamento` ⇒ ainda não pago (sem
+    pernas de pagamento). **Já não usa `cc_corrente`.**
+  - `taxa_plataforma=true` (Airbnb/VRBO/Stripe): só Resultado −base e IVA +iva, **sem perna
+    de pagamento** (já vem descontada no recebimento líquido da reserva).
+  - `data_pagamento` (acrescentada): data do pagamento, separada da data da fatura.
   - `atcud` (acrescentada): chave fiscal única do documento (campo H do QR), para detetar
     faturas repetidas na importação. Índice único parcial `(org_id, atcud) WHERE atcud NOT NULL`.
   - `nif` (acrescentada): NIF do fornecedor, guardado no custo; alimenta a memória
