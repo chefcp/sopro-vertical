@@ -59,6 +59,8 @@ App **Next.js (App Router, TypeScript) + Tailwind v4 + Supabase** (auth + `@supa
     select-depois-update/insert manual.
   - **Ciclo de vida (LIVRO via trigger, NÃO chamar `lancar_reserva` na app):** `validada=false`
     = rascunho (fora do livro); `validada=true` = fechada (o trigger `reserva_ledger` lança).
+    **Resultado é LÍQUIDO de IVA** (receita = `valor_total − iva_liquidado`; o IVA fica
+    na conta `iva`, como nos custos). `faturado` é só informativo — NÃO gera lançamentos.
     Resultado e IVA entram ao validar; a **tesouraria entra com o líquido total se
     `recebido=true`**, OU com `valor_recebido` se este estiver definido (recebimento
     parcial — tem prioridade sobre `recebido`), na `data_recebimento`. Atualizar
