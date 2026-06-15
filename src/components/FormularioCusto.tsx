@@ -391,10 +391,11 @@ export function FormularioCusto({
             : "Guardar e relançar"}
       </button>
       <p className="al-hint" style={{ margin: 0 }}>
-        Resultado (s/ IVA) e IVA entram na data da fatura. O pagamento (pelo CC
-        escolhido — o Geral representa a Sopro) entra na data de pagamento:
-        Suprimentos + e Tesouraria + no pagador, Tesouraria − no CC do custo.
-        Taxas de plataforma não têm pagamento (já vêm descontadas no recebimento).
+        Resultado (s/ IVA) e IVA entram na data da fatura. Pagamento na data de
+        pagamento: se pagar o <strong>Geral</strong> (a empresa) → só Tesouraria −
+        no CC do custo (<strong>sem suprimentos</strong>); se pagar{" "}
+        <strong>outro CC</strong> (com dono) → Suprimentos + e Tesouraria + no
+        pagador, Tesouraria − no CC do custo. Taxas de plataforma não têm pagamento.
       </p>
     </form>
   );

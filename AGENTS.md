@@ -73,11 +73,15 @@ App **Next.js (App Router, TypeScript) + Tailwind v4 + Supabase** (auth + `@supa
 - `custos (id, org_id, fornecedor, nif, descricao, data, data_pagamento, valor_base, iva,
   total*, taxa_plataforma, pago_por_tipo, pago_por_pessoa_id, pago_por_cc_id, atcud)`
   - **Modelo de pagamento (Fase 1):** "pago por" é SEMPRE um CC (o **Geral** representa a
-    Sopro; já não há `'sopro'`). `lancar_custo`: Resultado −base e IVA +iva no(s) CC(s) do
-    custo (data da fatura); pagamento (na `data_pagamento`) = **Suprimentos +total e
-    Tesouraria +total no CC pagador, Tesouraria −total no CC do custo** (quando pagador=CC do
-    custo, as tesourarias anulam → Suprimentos +). Sem `data_pagamento` ⇒ ainda não pago (sem
-    pernas de pagamento). **Já não usa `cc_corrente`.**
+    Sopro; já não há `'sopro'`). `centros_custo.representa_empresa=true` marca o CC da
+    empresa (o Geral). `lancar_custo`: Resultado −base e IVA +iva no(s) CC(s) do custo
+    (data da fatura); pagamento (na `data_pagamento`):
+    - **pagador = Geral (empresa):** só **Tesouraria −total no CC do custo** — **SEM
+      suprimentos** (a empresa a pagar não é financiamento externo).
+    - **pagador = outro CC (com dono):** **Suprimentos +total e Tesouraria +total no CC
+      pagador, Tesouraria −total no CC do custo** (pagador=CC do custo → tesourarias anulam →
+      Suprimentos +).
+    Sem `data_pagamento` ⇒ ainda não pago (sem pernas de pagamento). **Já não usa `cc_corrente`.**
   - `taxa_plataforma=true` (Airbnb/VRBO/Stripe): só Resultado −base e IVA +iva, **sem perna
     de pagamento** (já vem descontada no recebimento líquido da reserva).
   - `data_pagamento` (acrescentada): data do pagamento, separada da data da fatura.
