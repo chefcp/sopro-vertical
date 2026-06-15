@@ -27,7 +27,7 @@ export default async function EditarReservaPage({
   const { data } = await supabase
     .from("reservas")
     .select(
-      "id, casa_id, canal, data_checkin, data_checkout, valor_total, iva_liquidado, faturado, taxa_canal, comissao_stripe, liquido, fora_sopro, ical_uid, externo_id, fonte, hospede, estado, editada_manual, validada, recebido, data_recebimento, valor_recebido",
+      "id, casa_id, canal, data_checkin, data_checkout, data_faturacao, valor_total, iva_liquidado, faturado, fora_sopro, fonte, hospede, estado, editada_manual, validada",
     )
     .eq("id", id)
     .maybeSingle();
@@ -35,14 +35,18 @@ export default async function EditarReservaPage({
   if (!data) notFound();
   const r = data as Reserva;
 
-  const [{ data: casasData }, { data: centrosData }, { data: taxasData }] =
+  const [{ data: casasData }, { data: centrosData }, { data: recData }] =
     await Promise.all([
       supabase
         .from("casas")
         .select("id, nome, centro_custo_id, iva_percentagem")
         .order("nome"),
       supabase.from("centros_custo").select("id, nome"),
-      supabase.from("taxas_canal").select("canal, percentagem"),
+      supabase
+        .from("recebimentos")
+        .select("valor, data")
+        .eq("reserva_id", id)
+        .order("data"),
     ]);
   const centros = (centrosData ?? []) as { id: string; nome: string }[];
   const ccNome = new Map(centros.map((c) => [c.id, c.nome]));
@@ -57,12 +61,11 @@ export default async function EditarReservaPage({
     nome: c.nome,
     ccNome: ccNome.get(c.centro_custo_id) ?? "—",
   }));
-  const taxasPorCanal: Record<string, number> = {};
-  for (const t of (taxasData ?? []) as { canal: string; percentagem: number }[]) {
-    taxasPorCanal[t.canal] = Number(t.percentagem);
-  }
   const ivasPorCasa: Record<string, number> = {};
   for (const c of casasRaw) ivasPorCasa[c.id] = Number(c.iva_percentagem);
+  const recebimentosIniciais = (
+    (recData ?? []) as { valor: number; data: string | null }[]
+  ).map((x) => ({ valor: String(x.valor), data: x.data ?? "" }));
   const docs = await documentosDaEntidade(supabase, "reserva", r.id);
 
   const inicial = {
@@ -70,17 +73,13 @@ export default async function EditarReservaPage({
     canal: r.canal ?? "",
     data_checkin: r.data_checkin ?? "",
     data_checkout: r.data_checkout ?? "",
+    data_faturacao: r.data_faturacao ?? "",
     valor_total: String(r.valor_total ?? 0),
     iva_liquidado: String(r.iva_liquidado ?? 0),
-    taxa_canal: String(r.taxa_canal ?? 0),
-    comissao_stripe: String(r.comissao_stripe ?? 0),
     faturado: !!r.faturado,
     fora_sopro: !!r.fora_sopro,
     hospede: r.hospede ?? "",
     estado: r.estado ?? "ativa",
-    recebido: !!r.recebido,
-    data_recebimento: r.data_recebimento ?? "",
-    valor_recebido: r.valor_recebido != null ? String(r.valor_recebido) : "",
     validada: !!r.validada,
   };
 
@@ -124,8 +123,8 @@ export default async function EditarReservaPage({
           modo="editar"
           reservaId={r.id}
           inicial={inicial}
-          taxasPorCanal={taxasPorCanal}
           ivasPorCasa={ivasPorCasa}
+          recebimentosIniciais={recebimentosIniciais}
         />
       </div>
 

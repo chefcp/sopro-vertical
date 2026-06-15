@@ -56,6 +56,7 @@ export interface Reserva {
   canal: string | null;
   data_checkin: string | null;
   data_checkout: string | null;
+  data_faturacao: string | null;
   valor_total: number;
   iva_liquidado: number;
   faturado: boolean;

@@ -18,38 +18,32 @@ type CamposReserva = {
   canal: string;
   data_checkin: string | null;
   data_checkout: string | null;
+  data_faturacao: string | null;
   valor_total: number;
   iva_liquidado: number;
-  taxa_canal: number;
-  comissao_stripe: number;
   faturado: boolean;
   fora_sopro: boolean;
   hospede: string | null;
   estado: string;
-  recebido: boolean;
-  data_recebimento: string | null;
-  valor_recebido: number | null;
   // Quando o utilizador grava/valida, manda sobre as importações.
   editada_manual: true;
   // false = rascunho (fora do livro); true = fechada (o trigger lança).
   validada: boolean;
 };
 
-function extrair(formData: FormData): CamposReserva | { error: string } {
+type Recebimento = { valor: number; data: string | null };
+type ExtraidoReserva = { campos: CamposReserva; recebimentos: Recebimento[] };
+
+function extrair(formData: FormData): ExtraidoReserva | { error: string } {
   const casaId = String(formData.get("casa_id") ?? "");
   const canal = String(formData.get("canal") ?? "");
   const checkin = String(formData.get("data_checkin") ?? "");
   const checkout = String(formData.get("data_checkout") ?? "");
+  const dataFaturacao = String(formData.get("data_faturacao") ?? "");
   const valorTotal = num(formData, "valor_total");
   const ivaLiquidado = num(formData, "iva_liquidado");
-  const taxaCanal = num(formData, "taxa_canal");
-  const comissaoStripe = num(formData, "comissao_stripe");
   const hospede = String(formData.get("hospede") ?? "").trim();
   const estado = String(formData.get("estado") ?? "ativa");
-  const recebido = formData.get("recebido") === "on";
-  const dataRecebimento = String(formData.get("data_recebimento") ?? "");
-  const valorRecebidoRaw = String(formData.get("valor_recebido") ?? "").trim();
-  const valorRecebido = valorRecebidoRaw === "" ? null : Number(valorRecebidoRaw);
   // O botão "Validar e fechar" envia validada=true; "Guardar" envia false.
   const validada = formData.get("validada") === "true";
 
@@ -61,36 +55,40 @@ function extrair(formData: FormData): CamposReserva | { error: string } {
   for (const [v, nome] of [
     [valorTotal, "Valor total"],
     [ivaLiquidado, "IVA liquidado"],
-    [taxaCanal, "Taxa do canal"],
-    [comissaoStripe, "Comissão Stripe"],
   ] as const) {
     if (!Number.isFinite(v) || v < 0) return { error: `${nome} inválido.` };
   }
   if (checkin && checkout && checkout < checkin) {
     return { error: "O check-out não pode ser antes do check-in." };
   }
-  if (valorRecebido !== null && (!Number.isFinite(valorRecebido) || valorRecebido < 0)) {
-    return { error: "Valor recebido inválido." };
+
+  let recebimentos: Recebimento[] = [];
+  try {
+    const raw = JSON.parse(String(formData.get("recebimentos") ?? "[]"));
+    recebimentos = (raw as { valor: unknown; data: unknown }[])
+      .map((x) => ({ valor: Number(x.valor), data: (x.data as string) || null }))
+      .filter((x) => Number.isFinite(x.valor) && x.valor !== 0);
+  } catch {
+    return { error: "Recebimentos inválidos." };
   }
 
   return {
-    casa_id: casaId,
-    canal,
-    data_checkin: checkin || null,
-    data_checkout: checkout || null,
-    valor_total: valorTotal,
-    iva_liquidado: ivaLiquidado,
-    taxa_canal: taxaCanal,
-    comissao_stripe: comissaoStripe,
-    faturado: formData.get("faturado") === "on",
-    fora_sopro: formData.get("fora_sopro") === "on",
-    hospede: hospede || null,
-    estado,
-    recebido,
-    data_recebimento: dataRecebimento || null,
-    valor_recebido: valorRecebido,
-    editada_manual: true,
-    validada,
+    campos: {
+      casa_id: casaId,
+      canal,
+      data_checkin: checkin || null,
+      data_checkout: checkout || null,
+      data_faturacao: dataFaturacao || null,
+      valor_total: valorTotal,
+      iva_liquidado: ivaLiquidado,
+      faturado: formData.get("faturado") === "on",
+      fora_sopro: formData.get("fora_sopro") === "on",
+      hospede: hospede || null,
+      estado,
+      editada_manual: true,
+      validada,
+    },
+    recebimentos,
   };
 }
 
@@ -104,14 +102,27 @@ export async function criarReservaAction(
   const sessao = await getSessaoOrg();
   if (!sessao?.orgId) return { error: "Sem organização." };
 
-  const campos = extrair(formData);
-  if ("error" in campos) return campos;
+  const r = extrair(formData);
+  if ("error" in r) return r;
 
   const supabase = await createClient();
-  const { error } = await supabase
+  const { data: nova, error } = await supabase
     .from("reservas")
-    .insert({ org_id: sessao.orgId, ...campos });
-  if (error) return { error: error.message };
+    .insert({ org_id: sessao.orgId, ...r.campos })
+    .select("id")
+    .single();
+  if (error || !nova) return { error: error?.message ?? "Falha ao criar." };
+
+  if (r.recebimentos.length > 0) {
+    await supabase.from("recebimentos").insert(
+      r.recebimentos.map((x) => ({
+        org_id: sessao.orgId,
+        reserva_id: nova.id,
+        valor: x.valor,
+        data: x.data,
+      })),
+    );
+  }
 
   revalidatePath("/reservas");
   revalidatePath("/cc");
@@ -128,12 +139,25 @@ export async function atualizarReservaAction(
   const id = String(formData.get("id") ?? "");
   if (!id) return { error: "Reserva em falta." };
 
-  const campos = extrair(formData);
-  if ("error" in campos) return campos;
+  const r = extrair(formData);
+  if ("error" in r) return r;
 
   const supabase = await createClient();
-  const { error } = await supabase.from("reservas").update(campos).eq("id", id);
+  const { error } = await supabase.from("reservas").update(r.campos).eq("id", id);
   if (error) return { error: error.message };
+
+  // Substitui os recebimentos (o trigger re-lança a reserva).
+  await supabase.from("recebimentos").delete().eq("reserva_id", id);
+  if (r.recebimentos.length > 0) {
+    await supabase.from("recebimentos").insert(
+      r.recebimentos.map((x) => ({
+        org_id: sessao.orgId,
+        reserva_id: id,
+        valor: x.valor,
+        data: x.data,
+      })),
+    );
+  }
 
   revalidatePath("/reservas");
   revalidatePath("/cc");
@@ -160,10 +184,9 @@ export async function validarReservasAction(
 }
 
 /**
- * Fecha várias reservas de uma vez: valida + fatura + marca recebida, com
- * `data_recebimento = data do check-in` de cada reserva (a tesouraria entra
- * nessa data via trigger). Reservas sem check-in são validadas e faturadas,
- * mas não marcadas recebidas (faltaria a data).
+ * Fecha várias reservas: valida + fatura + cria um recebimento total
+ * (valor = valor_total, data = check-in) por cada reserva (não-fora) que ainda
+ * não tenha recebimentos. A tesouraria entra via trigger dos recebimentos.
  */
 export async function validarFaturarReceberAction(
   ids: string[],
@@ -173,53 +196,57 @@ export async function validarFaturarReceberAction(
   if (!ids.length) return { ok: 0, semData: 0 };
   const supabase = await createClient();
 
-  // Precisamos do check-in de cada reserva — supabase-js não faz col→col,
-  // por isso lê-se primeiro e agrupa-se por data para minimizar updates.
   const { data: rows, error: errSel } = await supabase
     .from("reservas")
-    .select("id, data_checkin")
+    .select("id, valor_total, data_checkin, fora_sopro")
     .in("id", ids);
   if (errSel) return { ok: 0, semData: 0, error: errSel.message };
 
-  const porData = new Map<string, string[]>();
-  const semData: string[] = [];
-  for (const r of (rows ?? []) as { id: string; data_checkin: string | null }[]) {
-    if (r.data_checkin) {
-      const lista = porData.get(r.data_checkin) ?? [];
-      lista.push(r.id);
-      porData.set(r.data_checkin, lista);
-    } else {
-      semData.push(r.id);
-    }
-  }
+  const { error: errUpd } = await supabase
+    .from("reservas")
+    .update({ validada: true, faturado: true })
+    .in("id", ids);
+  if (errUpd) return { ok: 0, semData: 0, error: errUpd.message };
 
-  let ok = 0;
-  for (const [data, lista] of porData) {
-    const { data: upd, error } = await supabase
-      .from("reservas")
-      .update({
-        validada: true,
-        faturado: true,
-        recebido: true,
-        data_recebimento: data,
-      })
-      .in("id", lista)
-      .select("id");
-    if (error) return { ok, semData: 0, error: error.message };
-    ok += upd?.length ?? 0;
-  }
+  // Não duplicar recebimentos em reservas que já têm.
+  const { data: jaRec } = await supabase
+    .from("recebimentos")
+    .select("reserva_id")
+    .in("reserva_id", ids);
+  const comRec = new Set(
+    (jaRec ?? []).map((x: { reserva_id: string }) => x.reserva_id),
+  );
 
-  if (semData.length) {
-    const { error } = await supabase
-      .from("reservas")
-      .update({ validada: true, faturado: true })
-      .in("id", semData);
-    if (error) return { ok, semData: 0, error: error.message };
+  let semData = 0;
+  const novos: {
+    org_id: string;
+    reserva_id: string;
+    valor: number;
+    data: string | null;
+  }[] = [];
+  for (const r of (rows ?? []) as {
+    id: string;
+    valor_total: number;
+    data_checkin: string | null;
+    fora_sopro: boolean;
+  }[]) {
+    if (r.fora_sopro || comRec.has(r.id)) continue;
+    if (!r.data_checkin) semData++;
+    novos.push({
+      org_id: sessao.orgId,
+      reserva_id: r.id,
+      valor: Number(r.valor_total),
+      data: r.data_checkin,
+    });
+  }
+  if (novos.length > 0) {
+    const { error } = await supabase.from("recebimentos").insert(novos);
+    if (error) return { ok: ids.length, semData, error: error.message };
   }
 
   revalidatePath("/reservas");
   revalidatePath("/cc");
-  return { ok, semData: semData.length };
+  return { ok: ids.length, semData };
 }
 
 /** Desvalida (volta a rascunho): o trigger remove-a do livro; fica editável. */

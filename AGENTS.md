@@ -50,23 +50,27 @@ App **Next.js (App Router, TypeScript) + Tailwind v4 + Supabase** (auth + `@supa
   - `iva_percentagem` (acrescentada): % de IVA da casa; pré-preenche o IVA das reservas
     (IVA incluído no preço: `iva = valor × % ÷ (100+%)`).
 - `reservas (id, org_id, casa_id, canal['airbnb'|'vrbo'|'proprio'|'por_fora'|'outro'],
-  data_checkin, data_checkout, valor_total, iva_liquidado, faturado, taxa_canal,
-  comissao_stripe, liquido*, fora_sopro, ical_uid, externo_id, fonte, hospede,
+  data_checkin, data_checkout, data_faturacao, valor_total, iva_liquidado, faturado,
+  taxa_canal, comissao_stripe, liquido*, fora_sopro, ical_uid, externo_id, fonte, hospede,
   estado['ativa'|'cancelada'], editada_manual, validada, recebido, data_recebimento,
   valor_recebido)`
+  - `taxa_canal`/`comissao_stripe`/`liquido`/`recebido`/`data_recebimento`/`valor_recebido`
+    são **legados** (Fase 2): NÃO afetam o livro. As taxas reais entram como **custos**
+    `taxa_plataforma`; os recebimentos estão na tabela `recebimentos`.
   - Índices únicos parciais `(org_id, ical_uid)` e `(org_id, externo_id)` (WHERE ... NOT NULL)
     ⇒ o upsert do supabase-js por `onConflict` NÃO funciona com eles; faz-se
     select-depois-update/insert manual.
-  - **Ciclo de vida (LIVRO via trigger, NÃO chamar `lancar_reserva` na app):** `validada=false`
-    = rascunho (fora do livro); `validada=true` = fechada (o trigger `reserva_ledger` lança).
-    **Resultado é LÍQUIDO de IVA** (receita = `valor_total − iva_liquidado`; o IVA fica
-    na conta `iva`, como nos custos). `faturado` é só informativo — NÃO gera lançamentos.
-    Resultado e IVA entram ao validar; a **tesouraria entra com o líquido total se
-    `recebido=true`**, OU com `valor_recebido` se este estiver definido (recebimento
-    parcial — tem prioridade sobre `recebido`), na `data_recebimento`. Atualizar
-    `valor_recebido` re-lança via trigger. `estado='cancelada'` NÃO tira do livro — só
-    `validada`/valor o fazem.
-    `editada_manual` só protege das importações.
+  - **Ciclo de vida (Fase 2 — LIVRO via trigger, NÃO chamar `lancar_reserva` na app):**
+    `validada=false` = rascunho (fora do livro); `validada=true` = fechada (trigger
+    `reserva_ledger`). `lancar_reserva` lança, na `data_faturacao` (fallback check-in):
+    **Resultado = `valor_total − iva_liquidado`** e **IVA = `−iva_liquidado`**. A
+    **tesouraria vem dos `recebimentos`** (um lançamento por recebimento, na sua data);
+    **as taxas de plataforma NÃO entram aqui** (são custos). `faturado` é só informativo.
+    `estado='cancelada'` NÃO tira do livro — só `validada` o faz. `editada_manual` protege
+    das importações.
+- `recebimentos (id, org_id, reserva_id→reservas, valor, data, criado_em)` — recebimentos
+  (líquidos) de cada reserva; trigger `recebimento_ledger` re-lança a reserva (se validada).
+  RLS `org_isolation`.
 - `fontes_reserva (id, org_id, casa_id, tipo['airbnb_ical'|'vrbo_ical'|'lodgify_api'|
   'outro_ical'], referencia, ativo)` — por casa, de onde vêm as reservas (URL iCal ou id
   de propriedade Lodgify).

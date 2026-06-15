@@ -27,7 +27,7 @@ export default async function ReservasPage() {
   const { data } = await supabase
     .from("vw_reservas")
     .select(
-      "id, casa, centro, canal, hospede, data_checkin, data_checkout, valor_total, iva_liquidado, liquido, faturado, fora_sopro, validada, estado, estado_temporal",
+      "id, casa, centro, canal, hospede, data_checkin, data_checkout, valor_total, iva_liquidado, recebido_total, faturado, fora_sopro, validada, estado, estado_temporal",
     )
     .order("data_checkin", { ascending: false, nullsFirst: false });
 

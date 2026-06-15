@@ -23,15 +23,13 @@ export default async function NovaReservaPage() {
   }
 
   const supabase = await createClient();
-  const [{ data: casasData }, { data: centrosData }, { data: taxasData }] =
-    await Promise.all([
-      supabase
-        .from("casas")
-        .select("id, nome, centro_custo_id, iva_percentagem")
-        .order("nome"),
-      supabase.from("centros_custo").select("id, nome"),
-      supabase.from("taxas_canal").select("canal, percentagem"),
-    ]);
+  const [{ data: casasData }, { data: centrosData }] = await Promise.all([
+    supabase
+      .from("casas")
+      .select("id, nome, centro_custo_id, iva_percentagem")
+      .order("nome"),
+    supabase.from("centros_custo").select("id, nome"),
+  ]);
 
   const centros = (centrosData ?? []) as { id: string; nome: string }[];
   const ccNome = new Map(centros.map((c) => [c.id, c.nome]));
@@ -46,10 +44,6 @@ export default async function NovaReservaPage() {
     nome: c.nome,
     ccNome: ccNome.get(c.centro_custo_id) ?? "—",
   }));
-  const taxasPorCanal: Record<string, number> = {};
-  for (const t of (taxasData ?? []) as { canal: string; percentagem: number }[]) {
-    taxasPorCanal[t.canal] = Number(t.percentagem);
-  }
   const ivasPorCasa: Record<string, number> = {};
   for (const c of casasRaw) ivasPorCasa[c.id] = Number(c.iva_percentagem);
 
@@ -62,12 +56,7 @@ export default async function NovaReservaPage() {
         <h1>Nova reserva</h1>
       </div>
       <div className="al-card" style={{ padding: 20 }}>
-        <FormularioReserva
-          casas={casas}
-          modo="criar"
-          taxasPorCanal={taxasPorCanal}
-          ivasPorCasa={ivasPorCasa}
-        />
+        <FormularioReserva casas={casas} modo="criar" ivasPorCasa={ivasPorCasa} />
       </div>
     </div>
   );

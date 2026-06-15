@@ -20,7 +20,7 @@ export type ReservaVw = {
   data_checkout: string | null;
   valor_total: number;
   iva_liquidado: number;
-  liquido: number;
+  recebido_total: number;
   faturado: boolean;
   fora_sopro: boolean;
   validada: boolean;
@@ -46,8 +46,8 @@ type SortKey =
   | "data_checkin"
   | "valor_total"
   | "faturado"
-  | "liquido"
-  | "liquido_iva";
+  | "resultado"
+  | "recebido";
 
 function valorOrdenacao(r: ReservaVw, k: SortKey): string | number {
   switch (k) {
@@ -65,10 +65,10 @@ function valorOrdenacao(r: ReservaVw, k: SortKey): string | number {
       return Number(r.valor_total);
     case "faturado":
       return r.faturado ? 1 : 0;
-    case "liquido":
-      return Number(r.liquido);
-    case "liquido_iva":
-      return Number(r.liquido) - Number(r.iva_liquidado);
+    case "resultado":
+      return Number(r.valor_total) - Number(r.iva_liquidado);
+    case "recebido":
+      return Number(r.recebido_total);
   }
 }
 
@@ -161,11 +161,11 @@ export function TabelaReservas({ reservas }: { reservas: ReservaVw[] }) {
       ),
     [filtradas],
   );
-  const totalLiquido = filtradas.reduce((s, r) => s + Number(r.liquido), 0);
-  const totalLiquidoIva = filtradas.reduce(
-    (s, r) => s + Number(r.liquido) - Number(r.iva_liquidado),
+  const totalResultado = filtradas.reduce(
+    (s, r) => s + Number(r.valor_total) - Number(r.iva_liquidado),
     0,
   );
+  const totalRecebido = filtradas.reduce((s, r) => s + Number(r.recebido_total), 0);
 
   const toggle = (id: string) =>
     setSel((prev) => {
@@ -352,8 +352,8 @@ export function TabelaReservas({ reservas }: { reservas: ReservaVw[] }) {
               <Th k="data_checkin" label="Check-in" />
               <Th k="valor_total" label="Valor total" r />
               <Th k="faturado" label="Faturado" />
-              <Th k="liquido" label="Líquido" r />
-              <Th k="liquido_iva" label="Líquido s/ IVA" r />
+              <Th k="resultado" label="Resultado s/ IVA" r />
+              <Th k="recebido" label="Recebido" r />
             </tr>
           </thead>
           <tbody>
@@ -404,14 +404,14 @@ export function TabelaReservas({ reservas }: { reservas: ReservaVw[] }) {
                     )}
                   </td>
                   <td className="al-r">
-                    <Valor n={Number(r.liquido)} dim={porPreencher || cancelada} />
-                  </td>
-                  <td className="al-r">
                     <Valor
-                      n={Number(r.liquido) - Number(r.iva_liquidado)}
+                      n={Number(r.valor_total) - Number(r.iva_liquidado)}
                       forte={!porPreencher && !cancelada}
                       dim={porPreencher || cancelada}
                     />
+                  </td>
+                  <td className="al-r">
+                    <Valor n={Number(r.recebido_total)} dim={Number(r.recebido_total) === 0} />
                   </td>
                 </tr>
               );
@@ -431,10 +431,10 @@ export function TabelaReservas({ reservas }: { reservas: ReservaVw[] }) {
                   Totais ({filtradas.length})
                 </td>
                 <td className="al-r">
-                  <span className="al-num">{eur(totalLiquido)}</span>
+                  <span className="al-num al-pos">{eur(totalResultado)}</span>
                 </td>
                 <td className="al-r">
-                  <span className="al-num al-pos">{eur(totalLiquidoIva)}</span>
+                  <span className="al-num">{eur(totalRecebido)}</span>
                 </td>
               </tr>
             </tfoot>
