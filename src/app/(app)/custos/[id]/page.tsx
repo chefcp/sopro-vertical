@@ -6,7 +6,17 @@ import { FormularioCusto } from "@/components/FormularioCusto";
 import { apagarCustoAction, duplicarCustoAction } from "@/lib/actions/custos";
 import { DocumentosEntidade } from "@/components/DocumentosEntidade";
 import { documentosDaEntidade } from "@/lib/documentos";
+import { Valor } from "@/components/Valor";
+import { eur, dataPt } from "@/lib/format";
 import type { Custo, Alocacao } from "@/lib/types";
+
+const CONTA_LABEL: Record<string, string> = {
+  resultado: "Resultado",
+  iva: "IVA",
+  suprimentos: "Suprimentos",
+  tesouraria: "Tesouraria",
+  cc_corrente: "Conta-corrente",
+};
 
 export const metadata = { title: "Editar custo · Sopro" };
 
@@ -35,6 +45,7 @@ export default async function EditarCustoPage({
     { data: centrosData },
     { data: casasData },
     { data: fornData },
+    { data: lancData },
   ] = await Promise.all([
     supabase
       .from("alocacoes")
@@ -43,6 +54,12 @@ export default async function EditarCustoPage({
     supabase.from("centros_custo").select("id, nome").order("ordem"),
     supabase.from("casas").select("id, nome, centro_custo_id").order("nome"),
     supabase.from("fornecedores").select("nif, nome"),
+    supabase
+      .from("lancamentos")
+      .select("id, data, conta, valor, descricao, centro_custo_id, casa_id")
+      .eq("origem", "custo")
+      .eq("origem_id", id)
+      .order("data"),
   ]);
 
   const centros = (centrosData ?? []) as { id: string; nome: string }[];
@@ -55,6 +72,15 @@ export default async function EditarCustoPage({
   for (const f of (fornData ?? []) as { nif: string; nome: string }[]) {
     nomesPorNif[f.nif] = f.nome;
   }
+  const casaNome = new Map(casas.map((c) => [c.id, c.nome]));
+  const lancCusto = (lancData ?? []) as {
+    id: string;
+    data: string;
+    conta: string;
+    valor: number;
+    descricao: string | null;
+    casa_id: string | null;
+  }[];
   const alocacoes = ((alocData ?? []) as Alocacao[]).map((a) => ({
     centro_custo_id: a.centro_custo_id,
     casa_id: a.casa_id ?? "",
@@ -110,6 +136,63 @@ export default async function EditarCustoPage({
           inicial={inicial}
           nomesPorNif={nomesPorNif}
         />
+      </div>
+
+      <h2 className="al-h2">Lançamentos gerados</h2>
+      <div className="al-card">
+        <table className="al-table">
+          <thead>
+            <tr>
+              <th>Data</th>
+              <th>Conta</th>
+              <th>Casa</th>
+              <th>Descrição</th>
+              <th className="al-r">Valor</th>
+            </tr>
+          </thead>
+          <tbody>
+            {lancCusto.map((l) => (
+              <tr key={l.id}>
+                <td className="al-mono">{dataPt(l.data)}</td>
+                <td>
+                  {l.conta === "iva" ? (
+                    <span className="al-iva">IVA</span>
+                  ) : (
+                    CONTA_LABEL[l.conta] ?? l.conta
+                  )}
+                </td>
+                <td className="al-dim">
+                  {l.casa_id ? (casaNome.get(l.casa_id) ?? "—") : "—"}
+                </td>
+                <td className="al-dim">{l.descricao ?? "—"}</td>
+                <td className="al-r">
+                  <Valor n={Number(l.valor)} />
+                </td>
+              </tr>
+            ))}
+            {lancCusto.length === 0 && (
+              <tr>
+                <td colSpan={5} className="al-hint" style={{ padding: 20 }}>
+                  Sem lançamentos (custo por gravar ou sem pagamento).
+                </td>
+              </tr>
+            )}
+          </tbody>
+          {lancCusto.length > 0 && (
+            <tfoot>
+              <tr>
+                <td colSpan={4} className="al-r" style={{ fontWeight: 600 }}>
+                  Soma
+                </td>
+                <td className="al-r">
+                  <span className="al-num">
+                    {eur(lancCusto.reduce((s, l) => s + Number(l.valor), 0))}
+                  </span>
+                </td>
+              </tr>
+            </tfoot>
+          )}
+        </table>
       </div>
 
       <h2 className="al-h2">Documentos</h2>

@@ -203,7 +203,10 @@ remove os lançamentos dela).
 - `src/lib/rpc.ts` — wrappers tipados das RPCs.
 - `src/lib/actions/*` — server actions (escrita; sempre com `org_id` e via RPC).
 - `src/app/(app)/*` — shell autenticado (TopBar + Tabs) e ecrãs: `cc`, `cc/[id]`, `casas`,
-  `reservas`, `custos`, `custos/importar`, `documentos`, `config`.
+  `reservas`, `custos`, `custos/importar`, `lancamentos`, `documentos`, `config`.
+  - `lancamentos`: livro completo (de `lancamentos`) com filtros (CC, conta, origem, casa,
+    datas, texto); linhas de custo/reserva ligam à origem por `(origem, origem_id)`. A edição
+    de um custo mostra a secção "Lançamentos gerados" desse custo.
 - Tokens de desenho do protótipo (`prototipo-gestao-al.jsx`) em `src/app/globals.css`.
 
 ## Como correr
