@@ -86,6 +86,11 @@ App **Next.js (App Router, TypeScript) + Tailwind v4 + Supabase** (auth + `@supa
       pagador, Tesouraria −total no CC do custo** (pagador=CC do custo → tesourarias anulam →
       Suprimentos +).
     Sem `data_pagamento` ⇒ ainda não pago (sem pernas de pagamento). **Já não usa `cc_corrente`.**
+  - **Estado pago / por pagar:** o formulário tem o toggle "Já pago"; desmarcado ⇒ grava
+    sem `pago_por_cc_id` nem `data_pagamento` (custo **por pagar** — só Resultado/IVA, sem
+    pagamento). A lista mostra a etiqueta "por pagar", tem filtro **"só por pagar"** e a ação
+    em massa **"Marcar como pago"** (`marcarPagoCustosAction(ids, cc, data)`: define pagador +
+    data e re-chama `lancar_custo`; ignora as taxas de plataforma).
   - `taxa_plataforma=true` (Airbnb/VRBO/Stripe): só Resultado −base e IVA +iva, **sem perna
     de pagamento** (já vem descontada no recebimento líquido da reserva).
   - `data_pagamento` (acrescentada): data do pagamento, separada da data da fatura.
@@ -135,6 +140,11 @@ App **Next.js (App Router, TypeScript) + Tailwind v4 + Supabase** (auth + `@supa
 - `lancar_manual(p_cc, p_conta, p_valor, p_descricao?, p_lote?)` — lança a UMA conta
   (`resultado`/`iva`/`suprimentos`/`tesouraria`) do CC, valor +/− (origem='manual').
   Para acertos, comissões bancárias, etc. SECURITY DEFINER com guarda `user_orgs()`.
+- `centralizar_iva(p_cc, p_valor, p_lote?)` — **Fase 3, "manter o IVA na Sopro":** o dono
+  deixa o IVA na empresa. Move `p_valor` deste CC para o Geral: **IVA −valor e Tesouraria
+  −valor no CC; IVA +valor e Tesouraria +valor no Geral** (CC `representa_empresa=true`).
+  SECURITY DEFINER com guarda `user_orgs()`. Botão "IVA na Sopro" no detalhe do CC (escondido
+  no próprio Geral).
 
 ## Importação de reservas (TUDO dentro da app — sem Edge Functions)
 

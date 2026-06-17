@@ -8,6 +8,7 @@ import {
   mudarPagoPorCustosAction,
   mudarCentroCustoCustosAction,
   apagarCustosAction,
+  marcarPagoCustosAction,
 } from "@/lib/actions/custos";
 
 export type CustoLinha = {
@@ -15,16 +16,23 @@ export type CustoLinha = {
   fornecedor: string;
   descricao: string | null;
   data: string;
+  data_pagamento: string | null;
   valor_base: number;
   iva: number;
   total: number;
   pago_por: string;
+  taxa_plataforma: boolean;
   centros: string;
   centro_ids: string[];
   casas: string;
   casa_ids: string[];
   tem_doc: boolean;
 };
+
+/** Custo por pagar: tem pagamento previsto mas ainda sem data/pagador. */
+function porPagar(c: CustoLinha): boolean {
+  return !c.taxa_plataforma && !c.data_pagamento;
+}
 
 type SortKey = "fornecedor" | "data" | "valor_base" | "iva" | "total" | "pago_por";
 
@@ -69,6 +77,7 @@ export function TabelaCustos({
   const [fCc, setFCc] = useState("");
   const [fCasa, setFCasa] = useState("");
   const [fSemDoc, setFSemDoc] = useState(false);
+  const [fPorPagar, setFPorPagar] = useState(false);
   const [fDe, setFDe] = useState("");
   const [fAte, setFAte] = useState("");
   const [sortKey, setSortKey] = useState<SortKey>("data");
@@ -78,6 +87,8 @@ export function TabelaCustos({
   const [bPagoTipo, setBPagoTipo] = useState<"sopro" | "cc">("sopro");
   const [bPagoCc, setBPagoCc] = useState("");
   const [bCc, setBCc] = useState("");
+  const [bMarcarCc, setBMarcarCc] = useState("");
+  const [bMarcarData, setBMarcarData] = useState("");
 
   const pagos = useMemo(
     () => [...new Set(custos.map((c) => c.pago_por))].sort(),
@@ -92,6 +103,7 @@ export function TabelaCustos({
       if (fCc && !c.centro_ids.includes(fCc)) return false;
       if (fCasa && !c.casa_ids.includes(fCasa)) return false;
       if (fSemDoc && c.tem_doc) return false;
+      if (fPorPagar && !porPagar(c)) return false;
       if (fDe && (c.data ?? "") < fDe) return false;
       if (fAte && (c.data ?? "") > fAte) return false;
       return true;
@@ -106,7 +118,7 @@ export function TabelaCustos({
       return sortDir === "asc" ? cmp : -cmp;
     });
     return arr;
-  }, [custos, fForn, fPago, fCc, fCasa, fSemDoc, fDe, fAte, sortKey, sortDir]);
+  }, [custos, fForn, fPago, fCc, fCasa, fSemDoc, fPorPagar, fDe, fAte, sortKey, sortDir]);
 
   const ordenarPor = (k: SortKey) => {
     if (k === sortKey) setSortDir((d) => (d === "asc" ? "desc" : "asc"));
@@ -157,6 +169,14 @@ export function TabelaCustos({
       router.refresh();
     });
   };
+  const marcarPagoSel = () => {
+    if (!bMarcarCc || !bMarcarData) return;
+    startProcessar(async () => {
+      await marcarPagoCustosAction([...sel], bMarcarCc, bMarcarData);
+      limparSel();
+      router.refresh();
+    });
+  };
   const apagarSel = () => {
     if (
       !window.confirm(
@@ -182,6 +202,7 @@ export function TabelaCustos({
         "IVA",
         "Total",
         "Pago por",
+        "Data pagamento",
         "Centro(s) de custo",
         "Casa(s)",
         "Tem fatura",
@@ -194,6 +215,7 @@ export function TabelaCustos({
         c.iva,
         c.total,
         c.pago_por,
+        c.data_pagamento ?? "",
         c.centros,
         c.casas,
         c.tem_doc ? "Sim" : "Não",
@@ -252,6 +274,22 @@ export function TabelaCustos({
           />
           só sem fatura
         </label>
+        <label
+          style={{
+            fontSize: 12,
+            color: "var(--muted)",
+            display: "flex",
+            alignItems: "center",
+            gap: 5,
+          }}
+        >
+          <input
+            type="checkbox"
+            checked={fPorPagar}
+            onChange={(e) => setFPorPagar(e.target.checked)}
+          />
+          só por pagar
+        </label>
         <label style={{ fontSize: 12, color: "var(--muted)" }}>
           Data de{" "}
           <input type="date" value={fDe} onChange={(e) => setFDe(e.target.value)} style={inputStyle} />
@@ -259,14 +297,14 @@ export function TabelaCustos({
         <label style={{ fontSize: 12, color: "var(--muted)" }}>
           a <input type="date" value={fAte} onChange={(e) => setFAte(e.target.value)} style={inputStyle} />
         </label>
-        {(fForn || fPago || fCc || fCasa || fSemDoc || fDe || fAte) && (
+        {(fForn || fPago || fCc || fCasa || fSemDoc || fPorPagar || fDe || fAte) && (
           <button
             type="button"
             className="al-back"
             style={{ padding: 0 }}
             onClick={() => {
               setFForn(""); setFPago(""); setFCc(""); setFCasa("");
-              setFSemDoc(false); setFDe(""); setFAte("");
+              setFSemDoc(false); setFPorPagar(false); setFDe(""); setFAte("");
             }}
           >
             limpar filtros
@@ -361,6 +399,37 @@ export function TabelaCustos({
             </span>
           </label>
 
+          <label style={{ fontSize: 12, color: "var(--muted)" }}>
+            Marcar como pago
+            <br />
+            <span style={{ display: "flex", gap: 4 }}>
+              <select
+                value={bMarcarCc}
+                onChange={(e) => setBMarcarCc(e.target.value)}
+                style={{ ...inputStyle, width: "auto" }}
+              >
+                <option value="">Pago por…</option>
+                {centros.map((c) => (
+                  <option key={c.id} value={c.id}>{c.nome}</option>
+                ))}
+              </select>
+              <input
+                type="date"
+                value={bMarcarData}
+                onChange={(e) => setBMarcarData(e.target.value)}
+                style={{ ...inputStyle, width: "auto" }}
+              />
+              <button
+                type="button"
+                className="al-btn"
+                onClick={marcarPagoSel}
+                disabled={aProcessar || !bMarcarCc || !bMarcarData}
+              >
+                Aplicar
+              </button>
+            </span>
+          </label>
+
           <button
             type="button"
             className="al-btn"
@@ -423,6 +492,9 @@ export function TabelaCustos({
                     <span className="al-dim" style={{ marginLeft: 8 }}>{c.descricao}</span>
                   )}
                   {!c.tem_doc && <span className="al-tag">sem fatura</span>}
+                  {porPagar(c) && (
+                    <span className="al-chip al-chip-no">por pagar</span>
+                  )}
                 </td>
                 <td className="al-mono">{dataPt(c.data)}</td>
                 <td className="al-r">

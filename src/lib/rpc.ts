@@ -85,6 +85,15 @@ export function reforcarSuprimentos(
   return supabase.rpc("reforcar_suprimentos", { p_cc: cc, p_valor: valor });
 }
 
+/** Move o IVA (e a tesouraria) de um CC para o Geral (manter IVA na Sopro). */
+export function centralizarIva(
+  supabase: SupabaseClient,
+  cc: string,
+  valor: number,
+) {
+  return supabase.rpc("centralizar_iva", { p_cc: cc, p_valor: valor });
+}
+
 /** Reparte um custo geral por casas usando os pesos (cria as alocações). */
 export function repartirCusto(
   supabase: SupabaseClient,

@@ -59,6 +59,7 @@ export function FormularioCusto({
   const [taxaPlataforma, setTaxaPlataforma] = useState(
     inicial?.taxa_plataforma ?? false,
   );
+  const [pago, setPago] = useState(inicial ? !!inicial.data_pagamento : true);
   const [pagoPorCc, setPagoPorCc] = useState(
     inicial?.pago_por_cc_id || geralId,
   );
@@ -235,6 +236,17 @@ export function FormularioCusto({
           Taxa de plataforma (Airbnb/VRBO/Stripe) — só Resultado e IVA, sem pagamento
         </label>
         {!taxaPlataforma && (
+          <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 14 }}>
+            <input
+              type="checkbox"
+              name="pago"
+              checked={pago}
+              onChange={(e) => setPago(e.target.checked)}
+            />
+            Já pago (se desmarcares, fica por pagar — sem pagador nem data)
+          </label>
+        )}
+        {!taxaPlataforma && pago && (
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
             <div>
               <label style={labelStyle} htmlFor="pago_por_cc_id">

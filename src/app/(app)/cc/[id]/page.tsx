@@ -8,6 +8,7 @@ import { BotaoRedistribuir } from "@/components/BotaoRedistribuir";
 import { BotaoPagarDono } from "@/components/BotaoPagarDono";
 import { BotaoReforcarSuprimentos } from "@/components/BotaoReforcarSuprimentos";
 import { BotaoLancamentoManual } from "@/components/BotaoLancamentoManual";
+import { BotaoCentralizarIva } from "@/components/BotaoCentralizarIva";
 import { BotaoTransferir } from "@/components/BotaoTransferir";
 import { eur, dataPt } from "@/lib/format";
 import type {
@@ -102,6 +103,15 @@ export default async function DetalheCcPage({
     .order("ordem");
   const outrosCentros = (outrosData ?? []) as { id: string; nome: string }[];
 
+  // Este CC representa a empresa (Geral)? (esconde "IVA na Sopro")
+  const { data: ccFlag } = await supabase
+    .from("centros_custo")
+    .select("representa_empresa")
+    .eq("id", id)
+    .maybeSingle();
+  const eEmpresa = !!(ccFlag as { representa_empresa: boolean } | null)
+    ?.representa_empresa;
+
   return (
     <div>
       <Link href="/cc" className="al-back">
@@ -116,6 +126,7 @@ export default async function DetalheCcPage({
           <BotaoRedistribuir cc={cc.centro_custo_id} />
           <BotaoPagarDono cc={cc.centro_custo_id} />
           <BotaoReforcarSuprimentos cc={cc.centro_custo_id} />
+          {!eEmpresa && <BotaoCentralizarIva cc={cc.centro_custo_id} />}
           <BotaoLancamentoManual cc={cc.centro_custo_id} />
           <BotaoTransferir
             cc={cc.centro_custo_id}

@@ -10,6 +10,7 @@ import {
   transferirCc,
   lancarManual,
   reforcarSuprimentos,
+  centralizarIva,
 } from "@/lib/rpc";
 import type { Conta } from "@/lib/types";
 
@@ -143,6 +144,28 @@ export async function lancarManualAction(
   revalidatePath(`/cc/${cc}`);
   revalidatePath("/cc");
   return { mensagem: "Lançamento manual registado." };
+}
+
+/** Move o IVA (e tesouraria) de um CC para o Geral — manter o IVA na Sopro. */
+export async function centralizarIvaAction(
+  _prev: AccaoState,
+  formData: FormData,
+): Promise<AccaoState> {
+  const cc = String(formData.get("cc") ?? "");
+  const valor = Number(formData.get("valor"));
+
+  if (!cc) return { error: "Centro de custo em falta." };
+  if (!Number.isFinite(valor) || valor <= 0) {
+    return { error: "Indica um valor válido." };
+  }
+
+  const supabase = await createClient();
+  const { error } = await centralizarIva(supabase, cc, valor);
+  if (error) return { error: error.message };
+
+  revalidatePath(`/cc/${cc}`);
+  revalidatePath("/cc");
+  return { mensagem: "IVA centralizado na Sopro." };
 }
 
 /** Distribui um reembolso de IVA recebido pela organização. */

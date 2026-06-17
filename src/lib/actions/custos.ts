@@ -36,8 +36,11 @@ function extrair(formData: FormData): Extraido | { error: string } {
   const valorBase = Number(formData.get("valor_base"));
   const iva = Number(formData.get("iva"));
   const taxaPlataforma = formData.get("taxa_plataforma") === "on";
+  const pago = formData.get("pago") === "on";
   const pagoPorCc = String(formData.get("pago_por_cc_id") ?? "");
   const dataPagamento = String(formData.get("data_pagamento") ?? "");
+  // Sem pagamento (taxa de plataforma ou ainda não pago) → sem pagador/data.
+  const semPagamento = taxaPlataforma || !pago;
 
   if (!fornecedor) return { error: "Indica o fornecedor." };
   if (!data) return { error: "Indica a data." };
@@ -45,10 +48,8 @@ function extrair(formData: FormData): Extraido | { error: string } {
     return { error: "Valor base inválido." };
   }
   if (!Number.isFinite(iva) || iva < 0) return { error: "IVA inválido." };
-  if (!taxaPlataforma && !pagoPorCc) {
-    return {
-      error: "Indica o centro de custo que pagou (ou marca 'taxa de plataforma').",
-    };
+  if (!semPagamento && !pagoPorCc) {
+    return { error: "Indica o centro de custo que pagou." };
   }
 
   let alocacoes: Alocacao[];
@@ -80,9 +81,9 @@ function extrair(formData: FormData): Extraido | { error: string } {
       iva,
       pago_por_tipo: "cc",
       pago_por_pessoa_id: null,
-      pago_por_cc_id: taxaPlataforma ? null : pagoPorCc || null,
+      pago_por_cc_id: semPagamento ? null : pagoPorCc || null,
       taxa_plataforma: taxaPlataforma,
-      data_pagamento: taxaPlataforma ? null : dataPagamento || null,
+      data_pagamento: semPagamento ? null : dataPagamento || null,
     },
     alocacoes,
   };
@@ -278,6 +279,45 @@ export async function mudarCentroCustoCustosAction(
   revalidatePath("/custos");
   revalidatePath("/cc");
   return { ok: ids.length };
+}
+
+/** Marca vários custos como pagos (define pagador + data) e re-lança. */
+export async function marcarPagoCustosAction(
+  ids: string[],
+  pagoPorCcId: string,
+  dataPagamento: string,
+): Promise<LoteResultado> {
+  const sessao = await getSessaoOrg();
+  if (!sessao?.orgId) return { ok: 0, error: "Sem organização." };
+  if (!ids.length) return { ok: 0 };
+  if (!pagoPorCcId) return { ok: 0, error: "Indica o centro de custo que pagou." };
+  if (!dataPagamento) return { ok: 0, error: "Indica a data de pagamento." };
+
+  const supabase = await createClient();
+  // Não mexe nas taxas de plataforma (não têm pagamento).
+  const { data: alvos } = await supabase
+    .from("custos")
+    .select("id")
+    .in("id", ids)
+    .eq("taxa_plataforma", false);
+  const lista = ((alvos ?? []) as { id: string }[]).map((c) => c.id);
+  if (!lista.length) return { ok: 0 };
+
+  const { error } = await supabase
+    .from("custos")
+    .update({
+      pago_por_tipo: "cc",
+      pago_por_pessoa_id: null,
+      pago_por_cc_id: pagoPorCcId,
+      data_pagamento: dataPagamento,
+    })
+    .in("id", lista);
+  if (error) return { ok: 0, error: error.message };
+
+  for (const id of lista) await lancarCusto(supabase, id);
+  revalidatePath("/custos");
+  revalidatePath("/cc");
+  return { ok: lista.length };
 }
 
 /** Apaga vários custos de uma vez (remove primeiro os lançamentos do livro). */
