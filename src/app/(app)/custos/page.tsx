@@ -36,7 +36,7 @@ export default async function CustosPage() {
     supabase
       .from("custos")
       .select(
-        "id, fornecedor, descricao, data, data_pagamento, valor_base, iva, total, taxa_plataforma, pago_por_tipo, pago_por_pessoa_id, pago_por_cc_id",
+        "id, fornecedor, descricao, data, data_pagamento, valor_base, iva, total, taxa_plataforma, origem_importacao, pago_por_tipo, pago_por_pessoa_id, pago_por_cc_id",
       )
       .order("data", { ascending: false })
       .order("criado_em", { ascending: false }),
@@ -101,6 +101,7 @@ export default async function CustosPage() {
       total: Number(c.total ?? Number(c.valor_base) + Number(c.iva)),
       pago_por: pagoPor(c),
       taxa_plataforma: !!c.taxa_plataforma,
+      origem: c.origem_importacao ?? null,
       centros: ccIds.map((id) => ccNome.get(id) ?? "—").join(", "),
       centro_ids: ccIds,
       casas: casaIds.map((id) => casaNome.get(id) ?? "—").join(", "),

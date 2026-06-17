@@ -121,6 +121,7 @@ export interface Custo {
   atcud: string | null;
   taxa_plataforma: boolean;
   data_pagamento: string | null;
+  origem_importacao: string | null;
 }
 
 /** alocacoes (de um custo por CC/casa) */

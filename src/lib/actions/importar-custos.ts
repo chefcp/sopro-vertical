@@ -23,6 +23,8 @@ export type CustoImportado = {
   atcud: string | null;
   // Id interno do documento no TOConline (dedup de importações automáticas).
   toconline_id?: string | null;
+  // Origem da importação: "qr" | "excel" | "toconline".
+  origem?: string | null;
   // Ficheiro já carregado no storage pelo cliente (opcional).
   storage_path: string | null;
   nome_ficheiro: string | null;
@@ -158,6 +160,7 @@ export async function importarCustosAction(
         data_pagamento: c.taxa_plataforma ? null : c.data,
         atcud: c.atcud || null,
         toconline_id: c.toconline_id || null,
+        origem_importacao: c.origem || null,
       })
       .select("id")
       .single();

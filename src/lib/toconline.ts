@@ -104,6 +104,7 @@ export function renovarToken(env: Env, refresh: string): Promise<Tokens> {
 export type DocCompra = {
   toconline_id: string;
   numero: string;
+  atcud: string;
   data: string; // AAAA-MM-DD
   valor_base: number;
   iva: number;
@@ -174,9 +175,15 @@ function mapearDoc(
     }
   }
 
+  // ATCUD: nome do campo não está documentado — tentamos os mais prováveis.
+  const atcud = String(
+    a.atcud ?? a.at_cud ?? a.document_atcud ?? a.atcud_code ?? "",
+  );
+
   return {
     toconline_id: id,
     numero: String(a.document_no ?? ""),
+    atcud,
     data: String(a.date ?? "").slice(0, 10),
     valor_base: base,
     iva,

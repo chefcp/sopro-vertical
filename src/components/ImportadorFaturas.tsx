@@ -36,19 +36,21 @@ type Rascunho = {
   pago_por_cc_id: string;
   taxa_plataforma: boolean;
   toconline_id: string | null;
+  origem: string;
   file: File | null;
   ficheiro: string | null;
   aviso?: string;
 };
 
 const inputStyle: React.CSSProperties = {
-  padding: "6px 8px",
+  padding: "5px 6px",
   border: "1px solid var(--line)",
   borderRadius: 8,
-  fontSize: 13,
+  fontSize: 12.5,
   background: "var(--surface)",
   color: "var(--ink)",
   width: "100%",
+  minWidth: 0,
 };
 
 function nomeSeguro(nome: string): string {
@@ -94,7 +96,7 @@ export function ImportadorFaturas({
   classificacoesIniciais?: Record<string, ClassificacaoFornecedor>;
 }) {
   const router = useRouter();
-  const [modo, setModo] = useState<"qr" | "excel" | "toconline">("qr");
+  const [modo, setModo] = useState<"qr" | "excel" | "toconline">("toconline");
   const [linhas, setLinhas] = useState<Rascunho[]>([]);
   const [processando, setProcessando] = useState(false);
   const [resultado, setResultado] = useState<ImportarResultado | null>(null);
@@ -163,6 +165,7 @@ export function ImportadorFaturas({
       pago_por_cc_id: bPagoCc,
       taxa_plataforma: false,
       toconline_id: null,
+      origem: "qr",
       file: null,
       ficheiro: null,
     };
@@ -291,6 +294,7 @@ export function ImportadorFaturas({
           centro_custo_id: ccMatch?.id ?? bCc,
           pago_por_tipo: pagoCc ? "cc" : "sopro",
           pago_por_cc_id: pagoCc ? pagoCc.id : "",
+          origem: "excel",
         });
       });
     setLinhas((prev) => [...prev, ...novas]);
@@ -318,11 +322,13 @@ export function ImportadorFaturas({
       novaLinha({
         nif: d.fornecedor_nif,
         fornecedor: (d.fornecedor_nif && nomesPorNif[d.fornecedor_nif]) || d.fornecedor_nome,
+        atcud: d.atcud,
         descricao: [d.tipo, d.numero].filter(Boolean).join(" "),
         data: d.data,
         valor_base: String(d.valor_base),
         iva: String(d.iva),
         toconline_id: d.toconline_id,
+        origem: "toconline",
         aviso: !d.fornecedor_nome && !d.fornecedor_nif ? "Sem fornecedor — confirma" : undefined,
       }),
     );
@@ -475,6 +481,7 @@ export function ImportadorFaturas({
           nif: l.nif || null,
           atcud: l.atcud || null,
           toconline_id: l.toconline_id,
+          origem: l.origem,
           storage_path,
           nome_ficheiro: l.ficheiro,
         });
@@ -936,7 +943,10 @@ export function ImportadorFaturas({
           </div>
 
           <div className="al-card" style={{ overflowX: "auto" }}>
-            <table className="al-table" style={{ minWidth: 880 }}>
+            <table
+              className="al-table"
+              style={{ width: "100%", minWidth: 1040 }}
+            >
               <thead>
                 <tr>
                   <th style={{ width: 28 }}>
@@ -973,10 +983,10 @@ export function ImportadorFaturas({
                   >
                     IVA{seta("iva")}
                   </th>
-                  <th style={{ minWidth: 130 }}>Centro custo</th>
-                  <th style={{ minWidth: 120 }}>Casa</th>
-                  <th style={{ minWidth: 150 }}>Pago por</th>
-                  <th style={{ width: 56 }}></th>
+                  <th style={{ minWidth: 120 }}>Centro custo</th>
+                  <th style={{ minWidth: 110 }}>Casa</th>
+                  <th style={{ minWidth: 140 }}>Pago por</th>
+                  <th style={{ minWidth: 130 }}>Memorizar</th>
                 </tr>
               </thead>
               <tbody>
@@ -1141,30 +1151,47 @@ export function ImportadorFaturas({
                       </td>
                       <td>
                         <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
-                          <button
-                            type="button"
-                            className="al-btn"
-                            style={{
-                              padding: "5px 10px",
-                              fontSize: 12,
-                              ...(classif[l.nif.trim()]
-                                ? { borderColor: "var(--pos)", color: "var(--pos)" }
-                                : {}),
-                            }}
-                            title={
-                              classif[l.nif.trim()]
-                                ? "Fornecedor memorizado — clica para atualizar com estes valores (CC pode ficar a branco)"
-                                : "Memorizar esta classificação para o fornecedor (CC pode ficar a branco)"
-                            }
-                            onClick={() => memorizarLinha(l)}
-                            disabled={!l.nif.trim() || nifAMemorizar === l.nif.trim()}
-                          >
-                            {nifAMemorizar === l.nif.trim()
-                              ? "A memorizar…"
-                              : classif[l.nif.trim()]
-                                ? "Memorizado ✓"
-                                : "Memorizar"}
-                          </button>
+                          {(() => {
+                            const memorizado = !!classif[l.nif.trim()];
+                            const aGuardarEste = nifAMemorizar === l.nif.trim();
+                            return (
+                              <button
+                                type="button"
+                                style={{
+                                  padding: "5px 10px",
+                                  fontSize: 12,
+                                  borderRadius: 8,
+                                  cursor: "pointer",
+                                  whiteSpace: "nowrap",
+                                  ...(memorizado
+                                    ? {
+                                        background: "transparent",
+                                        border: "none",
+                                        color: "var(--pos)",
+                                        fontWeight: 600,
+                                      }
+                                    : {
+                                        background: "var(--paper)",
+                                        border: "1px solid var(--line)",
+                                        color: "var(--ink)",
+                                      }),
+                                }}
+                                title={
+                                  memorizado
+                                    ? "Fornecedor memorizado — clica para atualizar com estes valores (CC pode ficar a branco)"
+                                    : "Memorizar esta classificação para o fornecedor (CC pode ficar a branco)"
+                                }
+                                onClick={() => memorizarLinha(l)}
+                                disabled={!l.nif.trim() || aGuardarEste}
+                              >
+                                {aGuardarEste
+                                  ? "A memorizar…"
+                                  : memorizado
+                                    ? "Memorizado ✓"
+                                    : "Memorizar"}
+                              </button>
+                            );
+                          })()}
                           <button
                             type="button"
                             className="al-back"

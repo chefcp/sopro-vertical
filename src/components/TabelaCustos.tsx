@@ -22,6 +22,7 @@ export type CustoLinha = {
   total: number;
   pago_por: string;
   taxa_plataforma: boolean;
+  origem: string | null;
   centros: string;
   centro_ids: string[];
   casas: string;
@@ -33,6 +34,14 @@ export type CustoLinha = {
 function porPagar(c: CustoLinha): boolean {
   return !c.taxa_plataforma && !c.data_pagamento;
 }
+
+const ORIGEM_LABEL: Record<string, string> = {
+  qr: "QR-Code",
+  excel: "Excel",
+  toconline: "TOConline",
+  manual: "Manual",
+};
+const origemLabel = (o: string | null) => (o ? ORIGEM_LABEL[o] ?? o : "—");
 
 type SortKey = "fornecedor" | "data" | "valor_base" | "iva" | "total" | "pago_por";
 
@@ -205,6 +214,7 @@ export function TabelaCustos({
         "Data pagamento",
         "Centro(s) de custo",
         "Casa(s)",
+        "Origem",
         "Tem fatura",
       ],
       ...filtrados.map((c) => [
@@ -218,6 +228,7 @@ export function TabelaCustos({
         c.data_pagamento ?? "",
         c.centros,
         c.casas,
+        origemLabel(c.origem),
         c.tem_doc ? "Sim" : "Não",
       ]),
     ];
@@ -469,6 +480,7 @@ export function TabelaCustos({
               <Th k="total" label="Total" r />
               <th>Centro de custo</th>
               <Th k="pago_por" label="Pago por" />
+              <th>Origem</th>
             </tr>
           </thead>
           <tbody>
@@ -511,11 +523,12 @@ export function TabelaCustos({
                   {c.casas ? ` · ${c.casas}` : ""}
                 </td>
                 <td>{c.pago_por}</td>
+                <td className="al-dim">{origemLabel(c.origem)}</td>
               </tr>
             ))}
             {filtrados.length === 0 && (
               <tr>
-                <td colSpan={8} className="al-hint" style={{ padding: 24 }}>
+                <td colSpan={9} className="al-hint" style={{ padding: 24 }}>
                   Nenhum custo com estes filtros.
                 </td>
               </tr>
@@ -530,6 +543,7 @@ export function TabelaCustos({
                 <td className="al-r"><span className="al-num">{eur(-totBase)}</span></td>
                 <td className="al-r"><span className="al-num al-iva">{eur(totIva)}</span></td>
                 <td className="al-r"><span className="al-num">{eur(totTotal)}</span></td>
+                <td></td>
                 <td></td>
                 <td></td>
               </tr>

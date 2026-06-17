@@ -116,7 +116,7 @@ export async function criarCustoAction(
 
   const { data: custo, error: errCusto } = await supabase
     .from("custos")
-    .insert({ org_id: org, ...r.campos })
+    .insert({ org_id: org, origem_importacao: "manual", ...r.campos })
     .select("id")
     .single();
 

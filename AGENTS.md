@@ -101,6 +101,8 @@ App **Next.js (App Router, TypeScript) + Tailwind v4 + Supabase** (auth + `@supa
   - `toconline_id` (acrescentada): id interno do documento de compra no TOConline; chave
     de deduplicação das importações automáticas. Índice único parcial `(org_id, toconline_id)
     WHERE toconline_id NOT NULL`.
+  - `origem_importacao` (acrescentada): de onde veio o custo — `qr` | `excel` | `toconline` |
+    `manual`. Mostrado na coluna "Origem" da lista de custos.
 - `alocacoes (id, org_id, custo_id, centro_custo_id, casa_id, percentagem)` — repartição do custo.
 - `lancamentos (id, org_id, data, centro_custo_id, casa_id, conta, valor,
   contraparte_pessoa_id, contraparte_cc_id, origem, origem_id, lote, descricao)` — o LIVRO.
