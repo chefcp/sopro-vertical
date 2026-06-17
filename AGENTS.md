@@ -199,9 +199,13 @@ remove os lançamentos dela).
     **deduplica por `toconline_id`** (devolve só os novos) e mapeia **só** para os campos que já
     temos (fornecedor/NIF, data, base, IVA, total, nº). Caem no **mesmo ecrã de revisão**; ao
     gravar, o `importarCustosAction` volta a deduplicar por `toconline_id`.
-    **Ligação:** Configuração → "TOConline" (`LigacaoToconline`): abre o URL de autorização,
-    o utilizador cola o **código** (o redirect é o do Postman, `oauth.pstmn.io`), e
-    `ligarToconlineAction` troca-o por tokens guardados em `integracoes_toconline`. O
+    **Ligação:** Configuração → "TOConline" (`LigacaoToconline`): botão abre o URL de
+    autorização; o TOConline redireciona de volta para `/api/toconline/callback` (route
+    handler) que troca o código por tokens e guarda em `integracoes_toconline` — **fluxo
+    automático**. O redirect URI gravado no TOConline tem de ser
+    `http://localhost:3000/api/toconline/callback` (= `TOCONLINE_REDIRECT_URL`). Há ainda
+    a opção de **colar o código à mão** (`ligarToconlineAction`) se o redirect estiver no
+    Postman. O
     access_token (~4 h) é renovado pelo refresh_token (~8 h) automaticamente; se o refresh
     expirar, é preciso religar. Credenciais em `.env.local`: `TOCONLINE_CLIENT_ID/_CLIENT_SECRET/
     _OAUTH_URL/_API_URL/_REDIRECT_URL`. (Não há *client_credentials* na API → não dá sync

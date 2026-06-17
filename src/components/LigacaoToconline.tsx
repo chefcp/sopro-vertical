@@ -1,7 +1,7 @@
 "use client";
 
 import { useActionState } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useTransition } from "react";
 import {
   ligarToconlineAction,
@@ -31,6 +31,15 @@ export function LigacaoToconline({
   urlAutorizacao: string;
 }) {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const toc = searchParams.get("toc");
+  const TOC_MSG: Record<string, { texto: string; ok: boolean }> = {
+    ok: { texto: "Ligado ao TOConline.", ok: true },
+    erro: { texto: "Falha ao ligar — tenta de novo.", ok: false },
+    sem_codigo: { texto: "O TOConline não devolveu código.", ok: false },
+    sem_config: { texto: "TOConline não configurado no servidor.", ok: false },
+  };
+  const tocBanner = toc ? TOC_MSG[toc] : null;
   const [state, action, pending] = useActionState<ToconlineState, FormData>(
     ligarToconlineAction,
     {},
@@ -62,30 +71,41 @@ export function LigacaoToconline({
         )}
       </p>
 
-      <ol className="al-hint" style={{ margin: 0, paddingLeft: 18, lineHeight: 1.6 }}>
-        <li>
-          <a href={urlAutorizacao} target="_blank" rel="noopener noreferrer">
-            Abrir a autorização do TOConline →
-          </a>{" "}
-          e autoriza o acesso.
-        </li>
-        <li>
-          Vais parar a uma página que mostra um <strong>código</strong> (após{" "}
-          <code>?code=</code>). Copia-o.
-        </li>
-        <li>Cola o código aqui em baixo e carrega em <strong>Ligar</strong>.</li>
-      </ol>
+      {tocBanner && (
+        <p
+          className={`al-num ${tocBanner.ok ? "al-pos" : "al-neg"}`}
+          style={{ fontSize: 12.5, margin: 0 }}
+        >
+          {tocBanner.texto}
+        </p>
+      )}
 
-      <form action={action} style={{ display: "flex", gap: 8, alignItems: "center" }}>
-        <input
-          name="code"
-          placeholder="Cola aqui o código de autorização"
-          style={inputStyle}
-        />
-        <button type="submit" className="al-btn" disabled={pending}>
-          {pending ? "A ligar…" : ligado ? "Religar" : "Ligar"}
-        </button>
-      </form>
+      <a href={urlAutorizacao} className="al-btn" style={{ justifySelf: "start" }}>
+        {ligado ? "Religar ao TOConline" : "Ligar ao TOConline"}
+      </a>
+      <p className="al-hint" style={{ margin: 0 }}>
+        Abre a autorização do TOConline; depois de autorizares, voltas aqui
+        automaticamente já ligado.
+      </p>
+
+      <details>
+        <summary className="al-hint" style={{ cursor: "pointer" }}>
+          Não voltou sozinho? Colar o código à mão
+        </summary>
+        <form
+          action={action}
+          style={{ display: "flex", gap: 8, alignItems: "center", marginTop: 8 }}
+        >
+          <input
+            name="code"
+            placeholder="Cola aqui o código (após ?code=)"
+            style={inputStyle}
+          />
+          <button type="submit" className="al-btn" disabled={pending}>
+            {pending ? "A ligar…" : "Ligar"}
+          </button>
+        </form>
+      </details>
 
       {state.error && (
         <p className="al-num al-neg" style={{ fontSize: 12.5, margin: 0 }}>
