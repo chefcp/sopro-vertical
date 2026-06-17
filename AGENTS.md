@@ -204,7 +204,10 @@ remove os lançamentos dela).
     paginado) via OAuth2 *authorization_code* (helpers em `src/lib/toconline.ts`, só servidor),
     **deduplica por `toconline_id`** (devolve só os novos) e mapeia **só** para os campos que já
     temos (fornecedor/NIF, data, base, IVA, total, nº). Caem no **mesmo ecrã de revisão**; ao
-    gravar, o `importarCustosAction` volta a deduplicar por `toconline_id`.
+    gravar, o `importarCustosAction` volta a deduplicar por `toconline_id`. Se a fatura já
+    existir (manual/QR/excel) sem `toconline_id`, o puxar **liga** o documento ao custo
+    existente (cruza por **ATCUD** ou **NIF+data+total**) em vez de duplicar — não mexe na
+    classificação nem relança.
     **Ligação:** Configuração → "TOConline" (`LigacaoToconline`): botão abre o URL de
     autorização; o TOConline redireciona de volta para `/api/toconline/callback` (route
     handler) que troca o código por tokens e guarda em `integracoes_toconline` — **fluxo

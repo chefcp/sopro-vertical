@@ -137,6 +137,7 @@ async function tokenValido(
 export type PuxarToconlineResultado = {
   novos: DocCompra[];
   jaImportados: number;
+  ligados: number;
   totalLidos: number;
   erro?: string;
   amostra?: string;
@@ -151,9 +152,11 @@ export async function puxarToconlineAction(
   ate?: string,
 ): Promise<PuxarToconlineResultado> {
   const sessao = await getSessaoOrg();
-  if (!sessao?.orgId) return { novos: [], jaImportados: 0, totalLidos: 0, erro: "Sem organização." };
+  if (!sessao?.orgId)
+    return { novos: [], jaImportados: 0, ligados: 0, totalLidos: 0, erro: "Sem organização." };
   const env = envToconline();
-  if (!env) return { novos: [], jaImportados: 0, totalLidos: 0, erro: "TOConline não configurado." };
+  if (!env)
+    return { novos: [], jaImportados: 0, ligados: 0, totalLidos: 0, erro: "TOConline não configurado." };
 
   const supabase = await createClient();
 
@@ -165,7 +168,13 @@ export async function puxarToconlineAction(
     docs = r.docs;
     amostra = r.amostra ? JSON.stringify(r.amostra) : undefined;
   } catch (e) {
-    return { novos: [], jaImportados: 0, totalLidos: 0, erro: e instanceof Error ? e.message : "Falha na ligação." };
+    return {
+      novos: [],
+      jaImportados: 0,
+      ligados: 0,
+      totalLidos: 0,
+      erro: e instanceof Error ? e.message : "Falha na ligação.",
+    };
   }
 
   // Filtro por data (cliente): entre `desde` e `ate`, se indicados.
@@ -173,9 +182,9 @@ export async function puxarToconlineAction(
   if (desde) candidatos = candidatos.filter((d) => d.data >= desde);
   if (ate) candidatos = candidatos.filter((d) => d.data <= ate);
 
-  // Dedup contra o que já existe (por toconline_id).
+  // 1) Já importados antes (por toconline_id).
   const ids = candidatos.map((d) => d.toconline_id);
-  const existentes = new Set<string>();
+  const jaPorId = new Set<string>();
   if (ids.length > 0) {
     const { data } = await supabase
       .from("custos")
@@ -183,14 +192,66 @@ export async function puxarToconlineAction(
       .eq("org_id", sessao.orgId)
       .in("toconline_id", ids);
     for (const r of (data ?? []) as { toconline_id: string | null }[]) {
-      if (r.toconline_id) existentes.add(r.toconline_id);
+      if (r.toconline_id) jaPorId.add(r.toconline_id);
     }
   }
+  let pendentes = candidatos.filter((d) => !jaPorId.has(d.toconline_id));
 
-  const novos = candidatos.filter((d) => !existentes.has(d.toconline_id));
+  // 2) Ligar a custos JÁ existentes (manual/QR/excel) ainda sem toconline_id,
+  //    para não duplicar: cruza por ATCUD ou por NIF+data+total.
+  let ligados = 0;
+  if (pendentes.length > 0) {
+    const { data: existRows } = await supabase
+      .from("custos")
+      .select("id, nif, data, total, atcud")
+      .eq("org_id", sessao.orgId)
+      .is("toconline_id", null);
+    const existentes = (existRows ?? []) as {
+      id: string;
+      nif: string | null;
+      data: string | null;
+      total: number | null;
+      atcud: string | null;
+    }[];
+    const porAtcud = new Map<string, string>();
+    const porChave = new Map<string, string>();
+    const chave = (nif: string, data: string, totalCent: number) =>
+      `${nif}|${data}|${totalCent}`;
+    for (const e of existentes) {
+      if (e.atcud) porAtcud.set(e.atcud, e.id);
+      if (e.nif && e.data && e.total != null) {
+        porChave.set(chave(e.nif, e.data, Math.round(Number(e.total) * 100)), e.id);
+      }
+    }
+
+    const restantes: DocCompra[] = [];
+    const usados = new Set<string>();
+    for (const d of pendentes) {
+      const totalCent = Math.round(d.total * 100);
+      let matchId: string | undefined;
+      if (d.atcud && porAtcud.has(d.atcud)) matchId = porAtcud.get(d.atcud);
+      if (!matchId && d.fornecedor_nif && d.data) {
+        matchId = porChave.get(chave(d.fornecedor_nif, d.data, totalCent));
+      }
+      if (matchId && !usados.has(matchId)) {
+        usados.add(matchId);
+        // Liga o documento ao custo existente (não mexe na classificação nem relança).
+        await supabase
+          .from("custos")
+          .update({ toconline_id: d.toconline_id })
+          .eq("id", matchId);
+        ligados++;
+      } else {
+        restantes.push(d);
+      }
+    }
+    pendentes = restantes;
+  }
+
   return {
-    novos,
-    jaImportados: candidatos.length - novos.length,
+    novos: pendentes,
+    jaImportados: jaPorId.size,
+    ligados,
     totalLidos: docs.length,
     amostra,
   };

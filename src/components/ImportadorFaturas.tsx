@@ -335,6 +335,7 @@ export function ImportadorFaturas({
     setLinhas((prev) => [...prev, ...novas]);
     const partes = [`Lidos ${res.totalLidos}`];
     if (res.jaImportados > 0) partes.push(`${res.jaImportados} já importado(s)`);
+    if (res.ligados > 0) partes.push(`${res.ligados} ligado(s) a custos já existentes`);
     if (repetidosNaLista > 0) partes.push(`${repetidosNaLista} já na lista`);
     setTocMsg(
       novas.length > 0
