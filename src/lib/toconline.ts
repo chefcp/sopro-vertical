@@ -81,6 +81,7 @@ export function trocarCodigo(env: Env, code: string): Promise<Tokens> {
     new URLSearchParams({
       grant_type: "authorization_code",
       code: code.trim(),
+      redirect_uri: env.redirectUrl,
       scope: "commercial",
     }),
   );

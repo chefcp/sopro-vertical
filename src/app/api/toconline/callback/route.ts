@@ -8,10 +8,14 @@ export async function GET(request: Request) {
   const url = new URL(request.url);
   const code = url.searchParams.get("code");
   const erro = url.searchParams.get("error");
-  const destino = (estado: string) =>
-    NextResponse.redirect(new URL(`/config?toc=${estado}`, url.origin));
+  const erroDesc = url.searchParams.get("error_description");
+  const destino = (estado: string, detalhe?: string) => {
+    const u = new URL(`/config?toc=${estado}`, url.origin);
+    if (detalhe) u.searchParams.set("msg", detalhe.slice(0, 300));
+    return NextResponse.redirect(u);
+  };
 
-  if (erro) return destino("erro");
+  if (erro) return destino("erro", erroDesc ? `${erro}: ${erroDesc}` : erro);
   if (!code) return destino("sem_codigo");
 
   const env = envToconline();
@@ -39,9 +43,9 @@ export async function GET(request: Request) {
       },
       { onConflict: "org_id" },
     );
-    if (error) return destino("erro");
-  } catch {
-    return destino("erro");
+    if (error) return destino("erro", error.message);
+  } catch (e) {
+    return destino("erro", e instanceof Error ? e.message : "falha desconhecida");
   }
 
   return destino("ok");

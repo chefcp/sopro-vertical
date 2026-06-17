@@ -40,6 +40,7 @@ export function LigacaoToconline({
     sem_config: { texto: "TOConline não configurado no servidor.", ok: false },
   };
   const tocBanner = toc ? TOC_MSG[toc] : null;
+  const tocDetalhe = searchParams.get("msg");
   const [state, action, pending] = useActionState<ToconlineState, FormData>(
     ligarToconlineAction,
     {},
@@ -77,6 +78,11 @@ export function LigacaoToconline({
           style={{ fontSize: 12.5, margin: 0 }}
         >
           {tocBanner.texto}
+          {!tocBanner.ok && tocDetalhe && (
+            <span style={{ display: "block", fontWeight: 400, marginTop: 4 }}>
+              {tocDetalhe}
+            </span>
+          )}
         </p>
       )}
 
