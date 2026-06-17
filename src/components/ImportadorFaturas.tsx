@@ -10,6 +10,7 @@ import {
   type CustoImportado,
   type ImportarResultado,
 } from "@/lib/actions/importar-custos";
+import { puxarToconlineAction } from "@/lib/actions/toconline";
 import type { PagoPorTipo } from "@/lib/types";
 
 type Centro = { id: string; nome: string };
@@ -30,6 +31,7 @@ type Rascunho = {
   pago_por_tipo: PagoPorTipo;
   pago_por_cc_id: string;
   taxa_plataforma: boolean;
+  toconline_id: string | null;
   file: File | null;
   ficheiro: string | null;
   aviso?: string;
@@ -86,17 +88,26 @@ export function ImportadorFaturas({
   nomesPorNif: Record<string, string>;
 }) {
   const router = useRouter();
-  const [modo, setModo] = useState<"qr" | "excel">("qr");
+  const [modo, setModo] = useState<"qr" | "excel" | "toconline">("qr");
   const [linhas, setLinhas] = useState<Rascunho[]>([]);
   const [processando, setProcessando] = useState(false);
   const [aGuardar, startGuardar] = useTransition();
   const [resultado, setResultado] = useState<ImportarResultado | null>(null);
+
+  // Seleção de linhas (para aplicar classificação só às escolhidas).
+  const [sel, setSel] = useState<Set<string>>(new Set());
 
   // Classificação em bulk.
   const [bCc, setBCc] = useState("");
   const [bCasa, setBCasa] = useState("");
   const [bPagoTipo, setBPagoTipo] = useState<PagoPorTipo>("sopro");
   const [bPagoCc, setBPagoCc] = useState("");
+
+  // TOConline.
+  const inicioAno = `${new Date().getFullYear()}-01-01`;
+  const [tocDesde, setTocDesde] = useState(inicioAno);
+  const [tocPuxando, setTocPuxando] = useState(false);
+  const [tocMsg, setTocMsg] = useState<string | null>(null);
 
   // Excel.
   const [excelRows, setExcelRows] = useState<string[][]>([]);
@@ -125,6 +136,7 @@ export function ImportadorFaturas({
     pago_por_tipo: bPagoTipo,
     pago_por_cc_id: bPagoCc,
     taxa_plataforma: false,
+    toconline_id: null,
     file: null,
     ficheiro: null,
     ...p,
@@ -132,8 +144,15 @@ export function ImportadorFaturas({
 
   const setLinha = (cid: string, patch: Partial<Rascunho>) =>
     setLinhas((prev) => prev.map((l) => (l.cid === cid ? { ...l, ...patch } : l)));
-  const removerLinha = (cid: string) =>
+  const removerLinha = (cid: string) => {
     setLinhas((prev) => prev.filter((l) => l.cid !== cid));
+    setSel((prev) => {
+      if (!prev.has(cid)) return prev;
+      const n = new Set(prev);
+      n.delete(cid);
+      return n;
+    });
+  };
 
   async function adicionarQr(files: FileList | null) {
     if (!files?.length) return;
@@ -242,15 +261,64 @@ export function ImportadorFaturas({
     setExcelRows([]);
   }
 
+  async function puxarToconline() {
+    setTocPuxando(true);
+    setTocMsg(null);
+    setResultado(null);
+    const res = await puxarToconlineAction(tocDesde || undefined);
+    if (res.erro) {
+      setTocMsg(res.erro);
+      setTocPuxando(false);
+      return;
+    }
+    const novas = res.novos.map((d) =>
+      novaLinha({
+        nif: d.fornecedor_nif,
+        fornecedor: (d.fornecedor_nif && nomesPorNif[d.fornecedor_nif]) || d.fornecedor_nome,
+        descricao: [d.tipo, d.numero].filter(Boolean).join(" "),
+        data: d.data,
+        valor_base: String(d.valor_base),
+        iva: String(d.iva),
+        toconline_id: d.toconline_id,
+        aviso: !d.fornecedor_nome && !d.fornecedor_nif ? "Sem fornecedor — confirma" : undefined,
+      }),
+    );
+    setLinhas((prev) => [...prev, ...novas]);
+    const parte = res.jaImportados > 0 ? ` (${res.jaImportados} já importado(s) ignorado(s))` : "";
+    setTocMsg(
+      novas.length > 0
+        ? `${novas.length} documento(s) novo(s)${parte}.`
+        : `Nada de novo${parte}.`,
+    );
+    setTocPuxando(false);
+  }
+
+  // Seleção: alvo da classificação em bulk = selecionadas, ou todas se nada selecionado.
+  const toggleSel = (cid: string) =>
+    setSel((prev) => {
+      const n = new Set(prev);
+      if (n.has(cid)) n.delete(cid);
+      else n.add(cid);
+      return n;
+    });
+  const todasSel = linhas.length > 0 && linhas.every((l) => sel.has(l.cid));
+  const toggleTodasSel = () =>
+    setSel(todasSel ? new Set() : new Set(linhas.map((l) => l.cid)));
+
   function aplicarATodas() {
+    const alvo = sel.size > 0 ? sel : null; // null = todas
     setLinhas((prev) =>
-      prev.map((l) => ({
-        ...l,
-        centro_custo_id: bCc || l.centro_custo_id,
-        casa_id: bCasa,
-        pago_por_tipo: bPagoTipo,
-        pago_por_cc_id: bPagoTipo === "cc" ? bPagoCc : "",
-      })),
+      prev.map((l) =>
+        alvo && !alvo.has(l.cid)
+          ? l
+          : {
+              ...l,
+              centro_custo_id: bCc || l.centro_custo_id,
+              casa_id: bCasa,
+              pago_por_tipo: bPagoTipo,
+              pago_por_cc_id: bPagoTipo === "cc" ? bPagoCc : "",
+            },
+      ),
     );
   }
 
@@ -329,6 +397,7 @@ export function ImportadorFaturas({
           taxa_plataforma: l.taxa_plataforma,
           nif: l.nif || null,
           atcud: l.atcud || null,
+          toconline_id: l.toconline_id,
           storage_path,
           nome_ficheiro: l.ficheiro,
         });
@@ -367,6 +436,14 @@ export function ImportadorFaturas({
         >
           Por Excel/CSV
         </button>
+        <button
+          type="button"
+          className={`al-tab ${modo === "toconline" ? "on" : ""}`}
+          style={{ background: "none", border: "none", cursor: "pointer" }}
+          onClick={() => setModo("toconline")}
+        >
+          Do TOConline
+        </button>
       </div>
 
       {modo === "qr" ? (
@@ -402,7 +479,7 @@ export function ImportadorFaturas({
             {processando ? "A ler…" : "Escolher ficheiros"}
           </span>
         </label>
-      ) : (
+      ) : modo === "excel" ? (
         <div className="al-card" style={{ padding: 16, marginBottom: 16 }}>
           <div
             style={{
@@ -490,6 +567,40 @@ export function ImportadorFaturas({
             </div>
           )}
         </div>
+      ) : (
+        <div className="al-card" style={{ padding: 16, marginBottom: 16 }}>
+          <div style={{ display: "flex", gap: 12, alignItems: "flex-end", flexWrap: "wrap" }}>
+            <label style={{ fontSize: 13 }}>
+              <strong>Puxar documentos de compra do TOConline</strong>
+              <span className="al-hint" style={{ display: "block", margin: "2px 0 6px" }}>
+                Só os documentos finalizados ainda não importados. Liga primeiro
+                em Configuração → TOConline.
+              </span>
+              <span style={{ fontSize: 12, color: "var(--muted)" }}>
+                Desde{" "}
+                <input
+                  type="date"
+                  value={tocDesde}
+                  onChange={(e) => setTocDesde(e.target.value)}
+                  style={{ ...inputStyle, width: "auto", display: "inline-block" }}
+                />
+              </span>
+            </label>
+            <button
+              type="button"
+              className="al-btn"
+              onClick={puxarToconline}
+              disabled={tocPuxando}
+            >
+              {tocPuxando ? "A puxar…" : "Puxar agora"}
+            </button>
+          </div>
+          {tocMsg && (
+            <p className="al-hint" style={{ margin: "10px 0 0" }}>
+              {tocMsg}
+            </p>
+          )}
+        </div>
       )}
 
       {resultado && (
@@ -538,7 +649,7 @@ export function ImportadorFaturas({
             }}
           >
             <span style={{ fontSize: 13, fontWeight: 600, alignSelf: "center" }}>
-              Aplicar a todas:
+              {sel.size > 0 ? `Aplicar a ${sel.size} selecionada(s):` : "Aplicar a todas:"}
             </span>
             <label style={{ fontSize: 12, color: "var(--muted)" }}>
               Centro de custo
@@ -609,12 +720,30 @@ export function ImportadorFaturas({
             <button type="button" className="al-btn" onClick={aplicarATodas}>
               Aplicar
             </button>
+            {sel.size > 0 && (
+              <button
+                type="button"
+                className="al-back"
+                style={{ padding: 0, alignSelf: "center" }}
+                onClick={() => setSel(new Set())}
+              >
+                limpar seleção
+              </button>
+            )}
           </div>
 
           <div className="al-card" style={{ overflowX: "auto" }}>
             <table className="al-table" style={{ minWidth: 880 }}>
               <thead>
                 <tr>
+                  <th style={{ width: 28 }}>
+                    <input
+                      type="checkbox"
+                      checked={todasSel}
+                      onChange={toggleTodasSel}
+                      title="Selecionar todas"
+                    />
+                  </th>
                   <th style={{ minWidth: 160 }}>Fornecedor / doc.</th>
                   <th style={{ minWidth: 120 }}>Data</th>
                   <th className="al-r" style={{ minWidth: 90 }}>
@@ -634,6 +763,13 @@ export function ImportadorFaturas({
                   const valida = linhaValida(l);
                   return (
                     <tr key={l.cid} style={valida ? undefined : { background: "var(--paper)" }}>
+                      <td>
+                        <input
+                          type="checkbox"
+                          checked={sel.has(l.cid)}
+                          onChange={() => toggleSel(l.cid)}
+                        />
+                      </td>
                       <td>
                         <input
                           value={l.fornecedor}

@@ -21,6 +21,8 @@ export type CustoImportado = {
   // Fiscais (do QR): NIF do emitente e ATCUD (chave única do documento).
   nif: string | null;
   atcud: string | null;
+  // Id interno do documento no TOConline (dedup de importações automáticas).
+  toconline_id?: string | null;
   // Ficheiro já carregado no storage pelo cliente (opcional).
   storage_path: string | null;
   nome_ficheiro: string | null;
@@ -93,6 +95,21 @@ export async function importarCustosAction(
   }
   const vistosNoLote = new Set<string>();
 
+  // toconline_id já existentes na BD (dedup das importações do TOConline).
+  const tocIds = custos.map((c) => c.toconline_id).filter(Boolean) as string[];
+  const tocExistem = new Set<string>();
+  if (tocIds.length > 0) {
+    const { data } = await supabase
+      .from("custos")
+      .select("toconline_id")
+      .eq("org_id", org)
+      .in("toconline_id", tocIds);
+    for (const r of (data ?? []) as { toconline_id: string | null }[]) {
+      if (r.toconline_id) tocExistem.add(r.toconline_id);
+    }
+  }
+  const tocVistosNoLote = new Set<string>();
+
   for (let i = 0; i < custos.length; i++) {
     const c = custos[i];
     const etiqueta = c.fornecedor?.trim() || `linha ${i + 1}`;
@@ -110,6 +127,14 @@ export async function importarCustosAction(
       continue;
     }
     if (c.atcud) vistosNoLote.add(c.atcud);
+
+    // Deteção de duplicados por documento do TOConline.
+    if (c.toconline_id && (tocExistem.has(c.toconline_id) || tocVistosNoLote.has(c.toconline_id))) {
+      duplicadas++;
+      erros.push(`${etiqueta}: documento já importado do TOConline — ignorado.`);
+      continue;
+    }
+    if (c.toconline_id) tocVistosNoLote.add(c.toconline_id);
 
     const { data: custo, error: errCusto } = await supabase
       .from("custos")
@@ -132,6 +157,7 @@ export async function importarCustosAction(
               : geralId),
         data_pagamento: c.taxa_plataforma ? null : c.data,
         atcud: c.atcud || null,
+        toconline_id: c.toconline_id || null,
       })
       .select("id")
       .single();

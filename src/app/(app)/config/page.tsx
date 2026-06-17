@@ -4,6 +4,9 @@ import { GestaoCentros } from "@/components/config/GestaoCentros";
 import { GestaoChaves } from "@/components/config/GestaoChaves";
 import { GestaoTaxas } from "@/components/config/GestaoTaxas";
 import { GestaoEmpresa } from "@/components/config/GestaoEmpresa";
+import { LigacaoToconline } from "@/components/LigacaoToconline";
+import { estadoToconline } from "@/lib/actions/toconline";
+import { envToconline, urlAutorizacao } from "@/lib/toconline";
 
 export const metadata = { title: "Configuração · Sopro" };
 
@@ -69,6 +72,10 @@ export default async function ConfigPage() {
     taxas[t.canal] = Number(t.percentagem);
   }
 
+  const envToc = envToconline();
+  const estadoToc = await estadoToconline();
+  const urlAutorizacaoToc = envToc ? urlAutorizacao(envToc) : "";
+
   return (
     <div>
       <div className="al-head">
@@ -80,6 +87,16 @@ export default async function ConfigPage() {
         <GestaoEmpresa
           nif={empresa.nif ?? ""}
           morada={empresa.morada ?? ""}
+        />
+      </div>
+
+      <h2 className="al-h2">TOConline (importar custos)</h2>
+      <div className="al-card" style={{ padding: 20 }}>
+        <LigacaoToconline
+          configurado={estadoToc.configurado}
+          ligado={estadoToc.ligado}
+          ligadoEm={estadoToc.ligado_em}
+          urlAutorizacao={urlAutorizacaoToc}
         />
       </div>
 

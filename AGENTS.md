@@ -98,6 +98,9 @@ App **Next.js (App Router, TypeScript) + Tailwind v4 + Supabase** (auth + `@supa
     faturas repetidas na importação. Índice único parcial `(org_id, atcud) WHERE atcud NOT NULL`.
   - `nif` (acrescentada): NIF do fornecedor, guardado no custo; alimenta a memória
     `fornecedores(nif→nome)`. Capturado no import e no formulário manual.
+  - `toconline_id` (acrescentada): id interno do documento de compra no TOConline; chave
+    de deduplicação das importações automáticas. Índice único parcial `(org_id, toconline_id)
+    WHERE toconline_id NOT NULL`.
 - `alocacoes (id, org_id, custo_id, centro_custo_id, casa_id, percentagem)` — repartição do custo.
 - `lancamentos (id, org_id, data, centro_custo_id, casa_id, conta, valor,
   contraparte_pessoa_id, contraparte_cc_id, origem, origem_id, lote, descricao)` — o LIVRO.
@@ -111,6 +114,9 @@ App **Next.js (App Router, TypeScript) + Tailwind v4 + Supabase** (auth + `@supa
 - `fornecedores (id, org_id, nif, nome, criado_em)` — memória NIF→nome do fornecedor
   (`unique (org_id, nif)`), preenchida ao importar faturas; pré-preenche o nome pelo NIF do
   QR na próxima importação. (Acrescentada; aditiva, RLS `org_isolation`.)
+- `integracoes_toconline (org_id PK, refresh_token, access_token, expira_em, ligado_em,
+  atualizado_em)` — tokens OAuth do TOConline por organização. RLS `org_isolation`. Os
+  segredos só são lidos no servidor (server actions).
 
 \* **Colunas GERADAS — nunca inserir/atualizar:** `custos.total` (= valor_base + iva) e
 `reservas.liquido` (= valor_total − taxa_canal − comissao_stripe).
@@ -186,6 +192,22 @@ remove os lançamentos dela).
     Colunas do modelo: `NIF · Fornecedor · Data · Base · IVA · Centro de custo · Pago por · ATCUD`.
     "Pago por" = "Sopro" ou nome de um CC (= pago por esse CC). Centro de custo e Pago por
     fazem match por nome.
+  - **TOConline (API):** aba "Do TOConline" → botão "Puxar agora" (com filtro "desde"). A
+    server action `puxarToconlineAction` (`src/lib/actions/toconline.ts`) lê os **documentos
+    de compra finalizados** (`GET /api/v1/commercial_purchases_documents?filter[status]=1`,
+    paginado) via OAuth2 *authorization_code* (helpers em `src/lib/toconline.ts`, só servidor),
+    **deduplica por `toconline_id`** (devolve só os novos) e mapeia **só** para os campos que já
+    temos (fornecedor/NIF, data, base, IVA, total, nº). Caem no **mesmo ecrã de revisão**; ao
+    gravar, o `importarCustosAction` volta a deduplicar por `toconline_id`.
+    **Ligação:** Configuração → "TOConline" (`LigacaoToconline`): abre o URL de autorização,
+    o utilizador cola o **código** (o redirect é o do Postman, `oauth.pstmn.io`), e
+    `ligarToconlineAction` troca-o por tokens guardados em `integracoes_toconline`. O
+    access_token (~4 h) é renovado pelo refresh_token (~8 h) automaticamente; se o refresh
+    expirar, é preciso religar. Credenciais em `.env.local`: `TOCONLINE_CLIENT_ID/_CLIENT_SECRET/
+    _OAUTH_URL/_API_URL/_REDIRECT_URL`. (Não há *client_credentials* na API → não dá sync
+    100% automático sem religar de vez em quando.)
+  - **Seleção no ecrã de revisão:** as linhas têm caixas de seleção; a barra "Aplicar"
+    afeta as **selecionadas** (ou todas, se nada selecionado) — define CC, casa e quem pagou.
 - **Gravação** (`importarCustosAction`, `src/lib/actions/importar-custos.ts`): por cada custo
   cria o registo + **uma alocação 100% no CC** escolhido (casa opcional), chama `lancar_custo`
   e arquiva o documento. O ficheiro é **carregado para o bucket pelo browser** (cliente
