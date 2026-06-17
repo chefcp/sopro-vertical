@@ -11,6 +11,10 @@ import {
   type ImportarResultado,
 } from "@/lib/actions/importar-custos";
 import { puxarToconlineAction } from "@/lib/actions/toconline";
+import {
+  guardarClassificacaoFornecedorAction,
+  type ClassificacaoFornecedor,
+} from "@/lib/actions/classificacoes";
 import type { PagoPorTipo } from "@/lib/types";
 
 type Centro = { id: string; nome: string };
@@ -80,12 +84,14 @@ export function ImportadorFaturas({
   orgId,
   orgNif,
   nomesPorNif,
+  classificacoesIniciais = {},
 }: {
   centros: Centro[];
   casas: Casa[];
   orgId: string;
   orgNif: string | null;
   nomesPorNif: Record<string, string>;
+  classificacoesIniciais?: Record<string, ClassificacaoFornecedor>;
 }) {
   const router = useRouter();
   const [modo, setModo] = useState<"qr" | "excel" | "toconline">("qr");
@@ -103,11 +109,28 @@ export function ImportadorFaturas({
   const [bPagoTipo, setBPagoTipo] = useState<PagoPorTipo>("sopro");
   const [bPagoCc, setBPagoCc] = useState("");
 
+  // Memória de classificação por fornecedor (NIF → defaults).
+  const [classif, setClassif] = useState<Record<string, ClassificacaoFornecedor>>(
+    classificacoesIniciais,
+  );
+
+  // Ordenação e filtro da lista de revisão.
+  const [vFiltro, setVFiltro] = useState("");
+  const [vSort, setVSort] = useState<"fornecedor" | "data" | "valor_base" | "iva">("data");
+  const [vDir, setVDir] = useState<"asc" | "desc">("asc");
+
   // TOConline.
-  const inicioAno = `${new Date().getFullYear()}-01-01`;
-  const [tocDesde, setTocDesde] = useState(inicioAno);
+  const hoje = new Date();
+  const fmtData = (y: number, m: number, d: number) =>
+    `${y}-${String(m).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
+  const ultimoDiaMes = new Date(hoje.getFullYear(), hoje.getMonth() + 1, 0).getDate();
+  const [tocDesde, setTocDesde] = useState(fmtData(hoje.getFullYear(), 1, 1));
+  const [tocAte, setTocAte] = useState(
+    fmtData(hoje.getFullYear(), hoje.getMonth() + 1, ultimoDiaMes),
+  );
   const [tocPuxando, setTocPuxando] = useState(false);
   const [tocMsg, setTocMsg] = useState<string | null>(null);
+  const [tocAmostra, setTocAmostra] = useState<string | null>(null);
 
   // Excel.
   const [excelRows, setExcelRows] = useState<string[][]>([]);
@@ -121,26 +144,39 @@ export function ImportadorFaturas({
   const [colPago, setColPago] = useState(6);
   const [colAtcud, setColAtcud] = useState(7);
 
-  const novaLinha = (p: Partial<Rascunho>): Rascunho => ({
-    cid: crypto.randomUUID(),
-    nif: "",
-    nifAdquirente: "",
-    atcud: "",
-    fornecedor: "",
-    descricao: "",
-    data: "",
-    valor_base: "",
-    iva: "",
-    centro_custo_id: bCc,
-    casa_id: bCasa,
-    pago_por_tipo: bPagoTipo,
-    pago_por_cc_id: bPagoCc,
-    taxa_plataforma: false,
-    toconline_id: null,
-    file: null,
-    ficheiro: null,
-    ...p,
-  });
+  const novaLinha = (p: Partial<Rascunho>): Rascunho => {
+    // Pré-preenche pela memória do fornecedor (NIF), se existir.
+    const mem = p.nif ? classif[p.nif] : undefined;
+    const base: Rascunho = {
+      cid: crypto.randomUUID(),
+      nif: "",
+      nifAdquirente: "",
+      atcud: "",
+      fornecedor: "",
+      descricao: "",
+      data: "",
+      valor_base: "",
+      iva: "",
+      centro_custo_id: bCc,
+      casa_id: bCasa,
+      pago_por_tipo: bPagoTipo,
+      pago_por_cc_id: bPagoCc,
+      taxa_plataforma: false,
+      toconline_id: null,
+      file: null,
+      ficheiro: null,
+    };
+    const comMem: Partial<Rascunho> = mem
+      ? {
+          centro_custo_id: mem.centro_custo_id ?? base.centro_custo_id,
+          casa_id: mem.casa_id ?? "",
+          taxa_plataforma: mem.taxa_plataforma,
+          pago_por_tipo: mem.pago_por_cc_id ? "cc" : base.pago_por_tipo,
+          pago_por_cc_id: mem.pago_por_cc_id ?? base.pago_por_cc_id,
+        }
+      : {};
+    return { ...base, ...comMem, ...p };
+  };
 
   const setLinha = (cid: string, patch: Partial<Rascunho>) =>
     setLinhas((prev) => prev.map((l) => (l.cid === cid ? { ...l, ...patch } : l)));
@@ -265,13 +301,20 @@ export function ImportadorFaturas({
     setTocPuxando(true);
     setTocMsg(null);
     setResultado(null);
-    const res = await puxarToconlineAction(tocDesde || undefined);
+    const res = await puxarToconlineAction(tocDesde || undefined, tocAte || undefined);
+    setTocAmostra(res.amostra ?? null);
     if (res.erro) {
       setTocMsg(res.erro);
       setTocPuxando(false);
       return;
     }
-    const novas = res.novos.map((d) =>
+    // Não voltar a juntar documentos que já estão na lista de revisão.
+    const jaNaLista = new Set(
+      linhas.map((l) => l.toconline_id).filter(Boolean) as string[],
+    );
+    const porAdicionar = res.novos.filter((d) => !jaNaLista.has(d.toconline_id));
+    const repetidosNaLista = res.novos.length - porAdicionar.length;
+    const novas = porAdicionar.map((d) =>
       novaLinha({
         nif: d.fornecedor_nif,
         fornecedor: (d.fornecedor_nif && nomesPorNif[d.fornecedor_nif]) || d.fornecedor_nome,
@@ -284,16 +327,17 @@ export function ImportadorFaturas({
       }),
     );
     setLinhas((prev) => [...prev, ...novas]);
-    const parte = res.jaImportados > 0 ? ` (${res.jaImportados} já importado(s) ignorado(s))` : "";
+    const partes = [`Lidos ${res.totalLidos}`];
+    if (res.jaImportados > 0) partes.push(`${res.jaImportados} já importado(s)`);
+    if (repetidosNaLista > 0) partes.push(`${repetidosNaLista} já na lista`);
     setTocMsg(
       novas.length > 0
-        ? `${novas.length} documento(s) novo(s)${parte}.`
-        : `Nada de novo${parte}.`,
+        ? `${novas.length} documento(s) novo(s). ${partes.join(" · ")}.`
+        : `Nada de novo. ${partes.join(" · ")}.`,
     );
     setTocPuxando(false);
   }
 
-  // Seleção: alvo da classificação em bulk = selecionadas, ou todas se nada selecionado.
   const toggleSel = (cid: string) =>
     setSel((prev) => {
       const n = new Set(prev);
@@ -301,15 +345,108 @@ export function ImportadorFaturas({
       else n.add(cid);
       return n;
     });
-  const todasSel = linhas.length > 0 && linhas.every((l) => sel.has(l.cid));
-  const toggleTodasSel = () =>
-    setSel(todasSel ? new Set() : new Set(linhas.map((l) => l.cid)));
 
-  function aplicarATodas() {
-    const alvo = sel.size > 0 ? sel : null; // null = todas
+  // Vista da lista de revisão: filtro por nome/NIF + ordenação.
+  const linhasVista = useMemo(() => {
+    let arr = linhas;
+    const q = vFiltro.trim().toLowerCase();
+    if (q) {
+      arr = arr.filter(
+        (l) => l.fornecedor.toLowerCase().includes(q) || l.nif.includes(q),
+      );
+    }
+    const dir = vDir === "asc" ? 1 : -1;
+    return [...arr].sort((a, b) => {
+      let va: string | number;
+      let vb: string | number;
+      switch (vSort) {
+        case "fornecedor":
+          va = a.fornecedor.toLowerCase();
+          vb = b.fornecedor.toLowerCase();
+          break;
+        case "data":
+          va = a.data;
+          vb = b.data;
+          break;
+        case "valor_base":
+          va = Number(a.valor_base) || 0;
+          vb = Number(b.valor_base) || 0;
+          break;
+        case "iva":
+          va = Number(a.iva) || 0;
+          vb = Number(b.iva) || 0;
+          break;
+      }
+      const cmp =
+        typeof va === "number" && typeof vb === "number"
+          ? va - vb
+          : String(va).localeCompare(String(vb), "pt");
+      return cmp * dir;
+    });
+  }, [linhas, vFiltro, vSort, vDir]);
+
+  const ordenarPor = (k: typeof vSort) => {
+    if (k === vSort) setVDir((d) => (d === "asc" ? "desc" : "asc"));
+    else {
+      setVSort(k);
+      setVDir(k === "data" ? "desc" : "asc");
+    }
+  };
+  const seta = (k: typeof vSort) => (vSort === k ? (vDir === "asc" ? " ▲" : " ▼") : "");
+
+  // "Selecionar todas" opera sobre as linhas VISÍVEIS (filtradas).
+  const todasSel =
+    linhasVista.length > 0 && linhasVista.every((l) => sel.has(l.cid));
+  const toggleTodasSel = () =>
+    setSel((prev) => {
+      const n = new Set(prev);
+      if (todasSel) linhasVista.forEach((l) => n.delete(l.cid));
+      else linhasVista.forEach((l) => n.add(l.cid));
+      return n;
+    });
+
+  // Memoriza a classificação atual da linha para o fornecedor (NIF).
+  async function fixarFornecedor(l: Rascunho) {
+    const nif = l.nif.trim();
+    if (!nif) {
+      window.alert("Esta linha não tem NIF — preenche o NIF para memorizar o fornecedor.");
+      return;
+    }
+    const c: ClassificacaoFornecedor = {
+      nif,
+      centro_custo_id: l.centro_custo_id || null,
+      casa_id: l.casa_id || null,
+      pago_por_cc_id: l.pago_por_tipo === "cc" ? l.pago_por_cc_id || null : null,
+      taxa_plataforma: l.taxa_plataforma,
+    };
+    const r = await guardarClassificacaoFornecedorAction(c);
+    if (r.error) {
+      window.alert(r.error);
+      return;
+    }
+    setClassif((prev) => ({ ...prev, [nif]: c }));
+    // Aplica já a todas as linhas do mesmo fornecedor nesta sessão.
+    setLinhas((prev) =>
+      prev.map((x) =>
+        x.nif.trim() === nif
+          ? {
+              ...x,
+              centro_custo_id: c.centro_custo_id ?? x.centro_custo_id,
+              casa_id: c.casa_id ?? "",
+              taxa_plataforma: c.taxa_plataforma,
+              pago_por_tipo: c.pago_por_cc_id ? "cc" : "sopro",
+              pago_por_cc_id: c.pago_por_cc_id ?? "",
+            }
+          : x,
+      ),
+    );
+  }
+
+  function aplicarASelecionadas() {
+    if (sel.size === 0) return; // só mexe nas selecionadas
     setLinhas((prev) =>
       prev.map((l) =>
-        alvo && !alvo.has(l.cid)
+        !sel.has(l.cid)
           ? l
           : {
               ...l,
@@ -576,14 +713,25 @@ export function ImportadorFaturas({
                 Só os documentos finalizados ainda não importados. Liga primeiro
                 em Configuração → TOConline.
               </span>
-              <span style={{ fontSize: 12, color: "var(--muted)" }}>
-                Desde{" "}
-                <input
-                  type="date"
-                  value={tocDesde}
-                  onChange={(e) => setTocDesde(e.target.value)}
-                  style={{ ...inputStyle, width: "auto", display: "inline-block" }}
-                />
+              <span style={{ fontSize: 12, color: "var(--muted)", display: "inline-flex", gap: 10, flexWrap: "wrap" }}>
+                <span>
+                  Desde{" "}
+                  <input
+                    type="date"
+                    value={tocDesde}
+                    onChange={(e) => setTocDesde(e.target.value)}
+                    style={{ ...inputStyle, width: "auto", display: "inline-block" }}
+                  />
+                </span>
+                <span>
+                  até{" "}
+                  <input
+                    type="date"
+                    value={tocAte}
+                    onChange={(e) => setTocAte(e.target.value)}
+                    style={{ ...inputStyle, width: "auto", display: "inline-block" }}
+                  />
+                </span>
               </span>
             </label>
             <button
@@ -599,6 +747,29 @@ export function ImportadorFaturas({
             <p className="al-hint" style={{ margin: "10px 0 0" }}>
               {tocMsg}
             </p>
+          )}
+          {tocAmostra && (
+            <details style={{ marginTop: 10 }}>
+              <summary className="al-hint" style={{ cursor: "pointer" }}>
+                Amostra do 1º documento (para diagnóstico)
+              </summary>
+              <pre
+                style={{
+                  fontSize: 11,
+                  background: "var(--paper)",
+                  border: "1px solid var(--line)",
+                  borderRadius: 8,
+                  padding: 10,
+                  marginTop: 6,
+                  maxHeight: 280,
+                  overflow: "auto",
+                  whiteSpace: "pre-wrap",
+                  wordBreak: "break-all",
+                }}
+              >
+                {tocAmostra}
+              </pre>
+            </details>
           )}
         </div>
       )}
@@ -649,7 +820,9 @@ export function ImportadorFaturas({
             }}
           >
             <span style={{ fontSize: 13, fontWeight: 600, alignSelf: "center" }}>
-              {sel.size > 0 ? `Aplicar a ${sel.size} selecionada(s):` : "Aplicar a todas:"}
+              {sel.size > 0
+                ? `Aplicar a ${sel.size} selecionada(s):`
+                : "Seleciona linhas para aplicar:"}
             </span>
             <label style={{ fontSize: 12, color: "var(--muted)" }}>
               Centro de custo
@@ -717,7 +890,12 @@ export function ImportadorFaturas({
                 </select>
               </label>
             )}
-            <button type="button" className="al-btn" onClick={aplicarATodas}>
+            <button
+              type="button"
+              className="al-btn"
+              onClick={aplicarASelecionadas}
+              disabled={sel.size === 0}
+            >
               Aplicar
             </button>
             {sel.size > 0 && (
@@ -732,6 +910,34 @@ export function ImportadorFaturas({
             )}
           </div>
 
+          <div
+            style={{
+              display: "flex",
+              gap: 8,
+              alignItems: "center",
+              flexWrap: "wrap",
+              marginBottom: 10,
+            }}
+          >
+            <input
+              placeholder="Filtrar por fornecedor ou NIF…"
+              value={vFiltro}
+              onChange={(e) => setVFiltro(e.target.value)}
+              style={{ ...inputStyle, width: "auto", minWidth: 220 }}
+            />
+            <button
+              type="button"
+              className="al-btn"
+              onClick={toggleTodasSel}
+              disabled={linhasVista.length === 0}
+            >
+              {todasSel ? "Desmarcar visíveis" : "Selecionar visíveis"}
+            </button>
+            <span className="al-hint" style={{ margin: 0 }}>
+              {linhasVista.length} de {linhas.length} · {sel.size} selecionada(s)
+            </span>
+          </div>
+
           <div className="al-card" style={{ overflowX: "auto" }}>
             <table className="al-table" style={{ minWidth: 880 }}>
               <thead>
@@ -744,22 +950,40 @@ export function ImportadorFaturas({
                       title="Selecionar todas"
                     />
                   </th>
-                  <th style={{ minWidth: 160 }}>Fornecedor / doc.</th>
-                  <th style={{ minWidth: 120 }}>Data</th>
-                  <th className="al-r" style={{ minWidth: 90 }}>
-                    Base
+                  <th
+                    style={{ minWidth: 160, cursor: "pointer", userSelect: "none" }}
+                    onClick={() => ordenarPor("fornecedor")}
+                  >
+                    Fornecedor / doc.{seta("fornecedor")}
                   </th>
-                  <th className="al-r" style={{ minWidth: 80 }}>
-                    IVA
+                  <th
+                    style={{ minWidth: 120, cursor: "pointer", userSelect: "none" }}
+                    onClick={() => ordenarPor("data")}
+                  >
+                    Data{seta("data")}
+                  </th>
+                  <th
+                    className="al-r"
+                    style={{ minWidth: 90, cursor: "pointer", userSelect: "none" }}
+                    onClick={() => ordenarPor("valor_base")}
+                  >
+                    Base{seta("valor_base")}
+                  </th>
+                  <th
+                    className="al-r"
+                    style={{ minWidth: 80, cursor: "pointer", userSelect: "none" }}
+                    onClick={() => ordenarPor("iva")}
+                  >
+                    IVA{seta("iva")}
                   </th>
                   <th style={{ minWidth: 130 }}>Centro custo</th>
                   <th style={{ minWidth: 120 }}>Casa</th>
                   <th style={{ minWidth: 150 }}>Pago por</th>
-                  <th style={{ width: 28 }}></th>
+                  <th style={{ width: 56 }}></th>
                 </tr>
               </thead>
               <tbody>
-                {linhas.map((l) => {
+                {linhasVista.map((l) => {
                   const valida = linhaValida(l);
                   return (
                     <tr key={l.cid} style={valida ? undefined : { background: "var(--paper)" }}>
@@ -919,15 +1143,33 @@ export function ImportadorFaturas({
                         )}
                       </td>
                       <td>
-                        <button
-                          type="button"
-                          className="al-back"
-                          style={{ padding: 0 }}
-                          title="Remover"
-                          onClick={() => removerLinha(l.cid)}
-                        >
-                          ✕
-                        </button>
+                        <div style={{ display: "flex", gap: 6 }}>
+                          <button
+                            type="button"
+                            className="al-back"
+                            style={{
+                              padding: 0,
+                              color: classif[l.nif.trim()] ? "var(--pos)" : undefined,
+                            }}
+                            title={
+                              classif[l.nif.trim()]
+                                ? "Fornecedor memorizado — clica para atualizar com estes valores"
+                                : "Memorizar estes valores para este fornecedor (NIF)"
+                            }
+                            onClick={() => fixarFornecedor(l)}
+                          >
+                            📌
+                          </button>
+                          <button
+                            type="button"
+                            className="al-back"
+                            style={{ padding: 0 }}
+                            title="Remover"
+                            onClick={() => removerLinha(l.cid)}
+                          >
+                            ✕
+                          </button>
+                        </div>
                       </td>
                     </tr>
                   );

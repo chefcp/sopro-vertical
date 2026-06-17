@@ -148,8 +148,11 @@ function mapearDoc(
   d: JsonApiObj,
   fornecedores: Map<string, { nome: string; nif: string }>,
 ): DocCompra | null {
-  if (!d.id) return null;
-  const a = d.attributes ?? {};
+  // Pode vir como objeto JSON:API ({id, attributes}) ou plano (campos diretos).
+  const a = (d.attributes ?? (d as unknown as Record<string, unknown>)) ?? {};
+  const idBruto = d.id ?? (a as Record<string, unknown>).id;
+  if (idBruto == null) return null;
+  const id = String(idBruto);
   const base = num(a.net_total);
   const total = num(a.gross_total);
   // IVA = total − base (caso típico; o utilizador confere na revisão).
@@ -159,7 +162,7 @@ function mapearDoc(
   let nome = String(a.supplier_business_name ?? a.supplier_name ?? "");
   let nif = String(a.supplier_tax_registration_number ?? "");
   if (!nif || !nome) {
-    const rel = d.relationships ?? {};
+    const rel = d.relationships ?? ({} as NonNullable<JsonApiObj["relationships"]>);
     for (const k of Object.keys(rel)) {
       const ref = rel[k]?.data;
       if (ref?.type === "suppliers" && ref.id && fornecedores.has(ref.id)) {
@@ -172,7 +175,7 @@ function mapearDoc(
   }
 
   return {
-    toconline_id: d.id,
+    toconline_id: id,
     numero: String(a.document_no ?? ""),
     data: String(a.date ?? "").slice(0, 10),
     valor_base: base,
@@ -185,49 +188,56 @@ function mapearDoc(
 }
 
 /**
- * Lê documentos de compra finalizados (paginado). `maxPaginas` limita o esforço.
- * Mapeia só para os campos que a nossa tabela usa.
+ * Lê documentos de compra finalizados (paginado via `links.next`). Devolve também
+ * uma amostra crua do 1º documento (para diagnóstico do mapeamento).
  */
 export async function listarDocumentosCompra(
   env: Env,
   accessToken: string,
   opts: { pageSize?: number; maxPaginas?: number } = {},
-): Promise<DocCompra[]> {
+): Promise<{ docs: DocCompra[]; amostra: unknown | null }> {
   const pageSize = opts.pageSize ?? 100;
   const maxPaginas = opts.maxPaginas ?? 20;
   const out: DocCompra[] = [];
+  let amostra: unknown | null = null;
 
   for (let pagina = 1; pagina <= maxPaginas; pagina++) {
     const p = new URLSearchParams();
     p.set("filter[status]", "1"); // finalizados
-    p.set("include", "supplier");
     p.set("page[size]", String(pageSize));
     p.set("page[number]", String(pagina));
+    const url = `${env.apiUrl}/api/v1/commercial_purchases_documents?${p.toString()}`;
 
-    const res = await fetch(
-      `${env.apiUrl}/api/v1/commercial_purchases_documents?${p.toString()}`,
-      {
-        headers: {
-          Authorization: `Bearer ${accessToken}`,
-          Accept: "application/json",
-        },
-        cache: "no-store",
+    const res: Response = await fetch(url, {
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        Accept: "application/json",
       },
-    );
+      cache: "no-store",
+    });
     if (res.status === 401) throw new Error("TOConline 401: token inválido/expirado.");
     if (!res.ok) {
       const txt = await res.text().catch(() => "");
       throw new Error(`TOConline GET ${res.status}: ${txt.slice(0, 200)}`);
     }
-    const j = (await res.json()) as { data?: JsonApiObj[]; included?: JsonApiObj[] };
-    const data = Array.isArray(j.data) ? j.data : [];
+    const j = (await res.json()) as unknown;
+
+    // A resposta pode ser um array simples OU um objeto JSON:API {data,included}.
+    const obj = (j ?? {}) as { data?: JsonApiObj[]; included?: JsonApiObj[] };
+    const data: JsonApiObj[] = Array.isArray(j) ? (j as JsonApiObj[]) : (obj.data ?? []);
+    const included: JsonApiObj[] = Array.isArray(j) ? [] : (obj.included ?? []);
+
+    if (pagina === 1) {
+      amostra = { formato: Array.isArray(j) ? "array" : "objeto", n: data.length, primeiro: data[0] ?? null };
+    }
+
     if (data.length === 0) break;
-    const fornecedores = mapaFornecedores(j.included ?? []);
+    const fornecedores = mapaFornecedores(included);
     for (const d of data) {
       const m = mapearDoc(d, fornecedores);
       if (m) out.push(m);
     }
     if (data.length < pageSize) break; // última página
   }
-  return out;
+  return { docs: out, amostra };
 }

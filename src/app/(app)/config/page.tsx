@@ -5,7 +5,9 @@ import { GestaoChaves } from "@/components/config/GestaoChaves";
 import { GestaoTaxas } from "@/components/config/GestaoTaxas";
 import { GestaoEmpresa } from "@/components/config/GestaoEmpresa";
 import { LigacaoToconline } from "@/components/LigacaoToconline";
+import { GestaoClassificacoes } from "@/components/config/GestaoClassificacoes";
 import { estadoToconline } from "@/lib/actions/toconline";
+import { listarClassificacoesFornecedor } from "@/lib/actions/classificacoes";
 import { envToconline, urlAutorizacao } from "@/lib/toconline";
 
 export const metadata = { title: "Configuração · Sopro" };
@@ -33,6 +35,8 @@ export default async function ConfigPage() {
     { data: chavesData },
     { data: taxasData },
     { data: orgData },
+    { data: casasData },
+    { data: fornData },
   ] = await Promise.all([
     supabase
       .from("centros_custo")
@@ -48,6 +52,8 @@ export default async function ConfigPage() {
       .select("nif, morada")
       .eq("id", sessao.orgId)
       .maybeSingle(),
+    supabase.from("casas").select("id, nome, centro_custo_id").order("nome"),
+    supabase.from("fornecedores").select("nif, nome"),
   ]);
   const empresa = (orgData ?? { nif: null, morada: null }) as {
     nif: string | null;
@@ -76,6 +82,18 @@ export default async function ConfigPage() {
   const estadoToc = await estadoToconline();
   const urlAutorizacaoToc = envToc ? urlAutorizacao(envToc) : "";
 
+  const casasConfig = (casasData ?? []) as {
+    id: string;
+    nome: string;
+    centro_custo_id: string;
+  }[];
+  const nomesPorNif: Record<string, string> = {};
+  for (const f of (fornData ?? []) as { nif: string; nome: string }[]) {
+    nomesPorNif[f.nif] = f.nome;
+  }
+  const classifMap = await listarClassificacoesFornecedor();
+  const classificacoes = Object.values(classifMap);
+
   return (
     <div>
       <div className="al-head">
@@ -97,6 +115,16 @@ export default async function ConfigPage() {
           ligado={estadoToc.ligado}
           ligadoEm={estadoToc.ligado_em}
           urlAutorizacao={urlAutorizacaoToc}
+        />
+      </div>
+
+      <h2 className="al-h2">Memória de fornecedores (importação)</h2>
+      <div className="al-card" style={{ padding: 20 }}>
+        <GestaoClassificacoes
+          classificacoes={classificacoes}
+          nomesPorNif={nomesPorNif}
+          centros={centros}
+          casas={casasConfig}
         />
       </div>
 

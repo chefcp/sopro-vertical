@@ -2,6 +2,7 @@ import Link from "next/link";
 import { getSessaoOrg } from "@/lib/org";
 import { createClient } from "@/lib/supabase/server";
 import { ImportadorFaturas } from "@/components/ImportadorFaturas";
+import { listarClassificacoesFornecedor } from "@/lib/actions/classificacoes";
 
 export const metadata = { title: "Importar faturas · Sopro" };
 
@@ -46,6 +47,7 @@ export default async function ImportarFaturasPage() {
     nomesPorNif[f.nif] = f.nome;
   }
   const orgNif = ((orgData ?? null) as { nif: string | null } | null)?.nif ?? null;
+  const classificacoes = await listarClassificacoesFornecedor();
 
   return (
     <div>
@@ -66,6 +68,7 @@ export default async function ImportarFaturasPage() {
         orgId={sessao.orgId}
         orgNif={orgNif}
         nomesPorNif={nomesPorNif}
+        classificacoesIniciais={classificacoes}
       />
     </div>
   );

@@ -137,7 +137,9 @@ async function tokenValido(
 export type PuxarToconlineResultado = {
   novos: DocCompra[];
   jaImportados: number;
+  totalLidos: number;
   erro?: string;
+  amostra?: string;
 };
 
 /**
@@ -146,25 +148,30 @@ export type PuxarToconlineResultado = {
  */
 export async function puxarToconlineAction(
   desde?: string,
+  ate?: string,
 ): Promise<PuxarToconlineResultado> {
   const sessao = await getSessaoOrg();
-  if (!sessao?.orgId) return { novos: [], jaImportados: 0, erro: "Sem organização." };
+  if (!sessao?.orgId) return { novos: [], jaImportados: 0, totalLidos: 0, erro: "Sem organização." };
   const env = envToconline();
-  if (!env) return { novos: [], jaImportados: 0, erro: "TOConline não configurado." };
+  if (!env) return { novos: [], jaImportados: 0, totalLidos: 0, erro: "TOConline não configurado." };
 
   const supabase = await createClient();
 
   let docs: DocCompra[];
+  let amostra: string | undefined;
   try {
     const token = await tokenValido(supabase, sessao.orgId);
-    docs = await listarDocumentosCompra(env, token);
+    const r = await listarDocumentosCompra(env, token);
+    docs = r.docs;
+    amostra = r.amostra ? JSON.stringify(r.amostra) : undefined;
   } catch (e) {
-    return { novos: [], jaImportados: 0, erro: e instanceof Error ? e.message : "Falha na ligação." };
+    return { novos: [], jaImportados: 0, totalLidos: 0, erro: e instanceof Error ? e.message : "Falha na ligação." };
   }
 
-  // Filtro por data (cliente): só a partir de `desde`, se indicado.
+  // Filtro por data (cliente): entre `desde` e `ate`, se indicados.
   let candidatos = docs;
   if (desde) candidatos = candidatos.filter((d) => d.data >= desde);
+  if (ate) candidatos = candidatos.filter((d) => d.data <= ate);
 
   // Dedup contra o que já existe (por toconline_id).
   const ids = candidatos.map((d) => d.toconline_id);
@@ -181,5 +188,10 @@ export async function puxarToconlineAction(
   }
 
   const novos = candidatos.filter((d) => !existentes.has(d.toconline_id));
-  return { novos, jaImportados: candidatos.length - novos.length };
+  return {
+    novos,
+    jaImportados: candidatos.length - novos.length,
+    totalLidos: docs.length,
+    amostra,
+  };
 }

@@ -117,6 +117,10 @@ App **Next.js (App Router, TypeScript) + Tailwind v4 + Supabase** (auth + `@supa
 - `integracoes_toconline (org_id PK, refresh_token, access_token, expira_em, ligado_em,
   atualizado_em)` — tokens OAuth do TOConline por organização. RLS `org_isolation`. Os
   segredos só são lidos no servidor (server actions).
+- `classificacoes_fornecedor (id, org_id, nif, centro_custo_id, casa_id, pago_por_cc_id,
+  taxa_plataforma, atualizado_em)` — memória por fornecedor (`unique (org_id, nif)`): ao
+  importar custos, o 📌 numa linha guarda CC/casa/pago-por/taxa desse NIF e as próximas
+  importações ficam pré-preenchidas. Editável/apagável na Configuração. RLS `org_isolation`.
 
 \* **Colunas GERADAS — nunca inserir/atualizar:** `custos.total` (= valor_base + iva) e
 `reservas.liquido` (= valor_total − taxa_canal − comissao_stripe).
@@ -210,8 +214,12 @@ remove os lançamentos dela).
     expirar, é preciso religar. Credenciais em `.env.local`: `TOCONLINE_CLIENT_ID/_CLIENT_SECRET/
     _OAUTH_URL/_API_URL/_REDIRECT_URL`. (Não há *client_credentials* na API → não dá sync
     100% automático sem religar de vez em quando.)
-  - **Seleção no ecrã de revisão:** as linhas têm caixas de seleção; a barra "Aplicar"
-    afeta as **selecionadas** (ou todas, se nada selecionado) — define CC, casa e quem pagou.
+  - **Seleção no ecrã de revisão:** as linhas têm caixas de seleção; a barra "Aplicar" só
+    afeta as **selecionadas** (nunca todas por engano). Há filtro por fornecedor/NIF,
+    ordenação por coluna, "selecionar visíveis", e o 📌 por linha memoriza a classificação
+    do fornecedor (ver `classificacoes_fornecedor`). Re-puxar não duplica linhas já na lista
+    nem documentos já importados (dedup por `toconline_id`). Filtro de datas **desde/até**
+    (até = último dia do mês atual por defeito).
 - **Gravação** (`importarCustosAction`, `src/lib/actions/importar-custos.ts`): por cada custo
   cria o registo + **uma alocação 100% no CC** escolhido (casa opcional), chama `lancar_custo`
   e arquiva o documento. O ficheiro é **carregado para o bucket pelo browser** (cliente
