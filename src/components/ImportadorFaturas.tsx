@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState, useTransition } from "react";
+import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { lerQrDeFicheiro } from "@/lib/fatura-scan";
@@ -97,7 +97,6 @@ export function ImportadorFaturas({
   const [modo, setModo] = useState<"qr" | "excel" | "toconline">("qr");
   const [linhas, setLinhas] = useState<Rascunho[]>([]);
   const [processando, setProcessando] = useState(false);
-  const [aGuardar, startGuardar] = useTransition();
   const [resultado, setResultado] = useState<ImportarResultado | null>(null);
 
   // Seleção de linhas (para aplicar classificação só às escolhidas).
@@ -405,41 +404,73 @@ export function ImportadorFaturas({
       return n;
     });
 
-  // Memoriza a classificação atual da linha para o fornecedor (NIF).
-  async function fixarFornecedor(l: Rascunho) {
-    const nif = l.nif.trim();
-    if (!nif) {
-      window.alert("Esta linha não tem NIF — preenche o NIF para memorizar o fornecedor.");
+  // Grava UMA linha (custo) de cada vez — obriga a olhar para cada uma.
+  // Ao gravar, memoriza também a classificação do fornecedor (substitui o 📌).
+  const [linhaAGravar, setLinhaAGravar] = useState<string | null>(null);
+
+  async function gravarLinha(l: Rascunho) {
+    if (!linhaValida(l)) {
+      window.alert(
+        "Faltam campos nesta linha: fornecedor, data, valores, centro de custo e quem pagou.",
+      );
       return;
     }
-    const c: ClassificacaoFornecedor = {
-      nif,
-      centro_custo_id: l.centro_custo_id || null,
-      casa_id: l.casa_id || null,
-      pago_por_cc_id: l.pago_por_tipo === "cc" ? l.pago_por_cc_id || null : null,
-      taxa_plataforma: l.taxa_plataforma,
-    };
-    const r = await guardarClassificacaoFornecedorAction(c);
-    if (r.error) {
-      window.alert(r.error);
-      return;
+    setLinhaAGravar(l.cid);
+    try {
+      const supabase = createClient();
+      let storage_path: string | null = null;
+      if (l.file) {
+        const path = `${orgId}/custo/${Date.now()}-${nomeSeguro(l.file.name)}`;
+        const { error } = await supabase.storage
+          .from("documentos")
+          .upload(path, l.file, {
+            contentType: l.file.type || "application/octet-stream",
+            upsert: false,
+          });
+        if (!error) storage_path = path;
+      }
+      const res = await importarCustosAction([
+        {
+          fornecedor: l.fornecedor.trim(),
+          descricao: l.descricao.trim() || null,
+          data: l.data,
+          valor_base: Number(l.valor_base || 0),
+          iva: Number(l.iva || 0),
+          centro_custo_id: l.centro_custo_id,
+          casa_id: l.casa_id || null,
+          pago_por_tipo: l.pago_por_tipo,
+          pago_por_cc_id: l.pago_por_tipo === "cc" ? l.pago_por_cc_id : null,
+          taxa_plataforma: l.taxa_plataforma,
+          nif: l.nif || null,
+          atcud: l.atcud || null,
+          toconline_id: l.toconline_id,
+          storage_path,
+          nome_ficheiro: l.ficheiro,
+        },
+      ]);
+
+      if (res.ok > 0) {
+        // Memoriza a classificação deste fornecedor para as próximas vezes.
+        if (l.nif.trim()) {
+          const c: ClassificacaoFornecedor = {
+            nif: l.nif.trim(),
+            centro_custo_id: l.centro_custo_id || null,
+            casa_id: l.casa_id || null,
+            pago_por_cc_id: l.pago_por_tipo === "cc" ? l.pago_por_cc_id || null : null,
+            taxa_plataforma: l.taxa_plataforma,
+          };
+          await guardarClassificacaoFornecedorAction(c);
+          setClassif((prev) => ({ ...prev, [c.nif]: c }));
+        }
+        removerLinha(l.cid);
+        setResultado(res);
+        router.refresh();
+      } else {
+        window.alert(res.erros.join("\n") || "Não foi possível gravar.");
+      }
+    } finally {
+      setLinhaAGravar(null);
     }
-    setClassif((prev) => ({ ...prev, [nif]: c }));
-    // Aplica já a todas as linhas do mesmo fornecedor nesta sessão.
-    setLinhas((prev) =>
-      prev.map((x) =>
-        x.nif.trim() === nif
-          ? {
-              ...x,
-              centro_custo_id: c.centro_custo_id ?? x.centro_custo_id,
-              casa_id: c.casa_id ?? "",
-              taxa_plataforma: c.taxa_plataforma,
-              pago_por_tipo: c.pago_por_cc_id ? "cc" : "sopro",
-              pago_por_cc_id: c.pago_por_cc_id ?? "",
-            }
-          : x,
-      ),
-    );
   }
 
   function aplicarASelecionadas() {
@@ -495,59 +526,6 @@ export function ImportadorFaturas({
     (s, l) => s + Number(l.valor_base || 0) + Number(l.iva || 0),
     0,
   );
-
-  function guardar() {
-    if (!validas.length) {
-      setResultado({ ok: 0, duplicadas: 0, erros: ["Nada válido para gravar."] });
-      return;
-    }
-    startGuardar(async () => {
-      const supabase = createClient();
-      const payload: CustoImportado[] = [];
-      const cidsEnviados: string[] = [];
-
-      for (let i = 0; i < validas.length; i++) {
-        const l = validas[i];
-        let storage_path: string | null = null;
-        if (l.file) {
-          const path = `${orgId}/custo/${Date.now()}-${i}-${nomeSeguro(
-            l.file.name,
-          )}`;
-          const { error } = await supabase.storage
-            .from("documentos")
-            .upload(path, l.file, {
-              contentType: l.file.type || "application/octet-stream",
-              upsert: false,
-            });
-          if (!error) storage_path = path;
-        }
-        payload.push({
-          fornecedor: l.fornecedor.trim(),
-          descricao: l.descricao.trim() || null,
-          data: l.data,
-          valor_base: Number(l.valor_base || 0),
-          iva: Number(l.iva || 0),
-          centro_custo_id: l.centro_custo_id,
-          casa_id: l.casa_id || null,
-          pago_por_tipo: l.pago_por_tipo,
-          pago_por_cc_id: l.pago_por_tipo === "cc" ? l.pago_por_cc_id : null,
-          taxa_plataforma: l.taxa_plataforma,
-          nif: l.nif || null,
-          atcud: l.atcud || null,
-          toconline_id: l.toconline_id,
-          storage_path,
-          nome_ficheiro: l.ficheiro,
-        });
-        cidsEnviados.push(l.cid);
-      }
-
-      const res = await importarCustosAction(payload);
-      // Tira da tabela as que foram enviadas (evita duplicar ao gravar de novo).
-      setLinhas((prev) => prev.filter((l) => !cidsEnviados.includes(l.cid)));
-      setResultado(res);
-      router.refresh();
-    });
-  }
 
   const casasDoCc = (ccId: string) => casas.filter((c) => c.centro_custo_id === ccId);
 
@@ -1143,22 +1121,20 @@ export function ImportadorFaturas({
                         )}
                       </td>
                       <td>
-                        <div style={{ display: "flex", gap: 6 }}>
+                        <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
                           <button
                             type="button"
-                            className="al-back"
-                            style={{
-                              padding: 0,
-                              color: classif[l.nif.trim()] ? "var(--pos)" : undefined,
-                            }}
+                            className="al-btn"
+                            style={{ padding: "5px 10px", fontSize: 12 }}
                             title={
                               classif[l.nif.trim()]
-                                ? "Fornecedor memorizado — clica para atualizar com estes valores"
-                                : "Memorizar estes valores para este fornecedor (NIF)"
+                                ? "Gravar este custo (e atualizar a memória deste fornecedor)"
+                                : "Gravar este custo (e memorizar a classificação deste fornecedor)"
                             }
-                            onClick={() => fixarFornecedor(l)}
+                            onClick={() => gravarLinha(l)}
+                            disabled={!valida || linhaAGravar === l.cid}
                           >
-                            📌
+                            {linhaAGravar === l.cid ? "A gravar…" : "Gravar"}
                           </button>
                           <button
                             type="button"
@@ -1178,30 +1154,15 @@ export function ImportadorFaturas({
             </table>
           </div>
 
-          <div
-            style={{
-              display: "flex",
-              alignItems: "center",
-              gap: 14,
-              marginTop: 14,
-            }}
-          >
-            <button
-              type="button"
-              className="al-btn"
-              onClick={guardar}
-              disabled={aGuardar || validas.length === 0}
-            >
-              {aGuardar
-                ? "A gravar…"
-                : `Gravar ${validas.length} custo(s) · ${totalImportar.toFixed(2)} €`}
-            </button>
-            <span className="al-hint" style={{ margin: 0 }}>
-              {linhas.length - validas.length > 0
-                ? `${linhas.length - validas.length} por completar (faltam campos).`
-                : "Tudo pronto a gravar."}
-            </span>
-          </div>
+          <p className="al-hint" style={{ marginTop: 14 }}>
+            Grava <strong>linha a linha</strong> (botão <strong>Gravar</strong> em
+            cada uma) — assim olhas para cada custo antes de o lançares.{" "}
+            {validas.length} pronta(s) ·{" "}
+            {linhas.length - validas.length > 0
+              ? `${linhas.length - validas.length} por completar (faltam campos).`
+              : "sem pendências."}{" "}
+            Total por gravar: {totalImportar.toFixed(2)} €.
+          </p>
         </>
       )}
     </div>
