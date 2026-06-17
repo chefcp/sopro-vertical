@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { lerQrDeFicheiro } from "@/lib/fatura-scan";
@@ -98,6 +98,7 @@ export function ImportadorFaturas({
   const [linhas, setLinhas] = useState<Rascunho[]>([]);
   const [processando, setProcessando] = useState(false);
   const [resultado, setResultado] = useState<ImportarResultado | null>(null);
+  const [aGravar, startGravar] = useTransition();
 
   // Seleção de linhas (para aplicar classificação só às escolhidas).
   const [sel, setSel] = useState<Set<string>>(new Set());
@@ -404,33 +405,63 @@ export function ImportadorFaturas({
       return n;
     });
 
-  // Grava UMA linha (custo) de cada vez — obriga a olhar para cada uma.
-  // Ao gravar, memoriza também a classificação do fornecedor (substitui o 📌).
-  const [linhaAGravar, setLinhaAGravar] = useState<string | null>(null);
+  // Botão por linha: MEMORIZA a classificação do fornecedor (NIF). Permite CC a
+  // branco (ex.: Airbnb = só taxa de plataforma; o CC escolhe-se a cada fatura).
+  const [nifAMemorizar, setNifAMemorizar] = useState<string | null>(null);
 
-  async function gravarLinha(l: Rascunho) {
-    if (!linhaValida(l)) {
+  async function memorizarLinha(l: Rascunho) {
+    const nif = l.nif.trim();
+    if (!nif) {
+      window.alert("Esta linha não tem NIF — preenche o NIF para memorizar o fornecedor.");
+      return;
+    }
+    const c: ClassificacaoFornecedor = {
+      nif,
+      centro_custo_id: l.centro_custo_id || null,
+      casa_id: l.casa_id || null,
+      pago_por_cc_id: l.pago_por_tipo === "cc" ? l.pago_por_cc_id || null : null,
+      taxa_plataforma: l.taxa_plataforma,
+    };
+    setNifAMemorizar(nif);
+    try {
+      const r = await guardarClassificacaoFornecedorAction(c);
+      if (r.error) {
+        window.alert(r.error);
+        return;
+      }
+      setClassif((prev) => ({ ...prev, [nif]: c }));
+    } finally {
+      setNifAMemorizar(null);
+    }
+  }
+
+  // Grava no livro os custos SELECIONADOS (seleção consciente, não "tudo").
+  function gravarSelecionados() {
+    const alvo = linhas.filter((l) => sel.has(l.cid) && linhaValida(l));
+    if (alvo.length === 0) {
       window.alert(
-        "Faltam campos nesta linha: fornecedor, data, valores, centro de custo e quem pagou.",
+        "Seleciona linhas completas para gravar (com fornecedor, data, valores, CC e quem pagou).",
       );
       return;
     }
-    setLinhaAGravar(l.cid);
-    try {
+    startGravar(async () => {
       const supabase = createClient();
-      let storage_path: string | null = null;
-      if (l.file) {
-        const path = `${orgId}/custo/${Date.now()}-${nomeSeguro(l.file.name)}`;
-        const { error } = await supabase.storage
-          .from("documentos")
-          .upload(path, l.file, {
-            contentType: l.file.type || "application/octet-stream",
-            upsert: false,
-          });
-        if (!error) storage_path = path;
-      }
-      const res = await importarCustosAction([
-        {
+      const payload: CustoImportado[] = [];
+      const cids: string[] = [];
+      for (let i = 0; i < alvo.length; i++) {
+        const l = alvo[i];
+        let storage_path: string | null = null;
+        if (l.file) {
+          const path = `${orgId}/custo/${Date.now()}-${i}-${nomeSeguro(l.file.name)}`;
+          const { error } = await supabase.storage
+            .from("documentos")
+            .upload(path, l.file, {
+              contentType: l.file.type || "application/octet-stream",
+              upsert: false,
+            });
+          if (!error) storage_path = path;
+        }
+        payload.push({
           fornecedor: l.fornecedor.trim(),
           descricao: l.descricao.trim() || null,
           data: l.data,
@@ -446,31 +477,19 @@ export function ImportadorFaturas({
           toconline_id: l.toconline_id,
           storage_path,
           nome_ficheiro: l.ficheiro,
-        },
-      ]);
-
-      if (res.ok > 0) {
-        // Memoriza a classificação deste fornecedor para as próximas vezes.
-        if (l.nif.trim()) {
-          const c: ClassificacaoFornecedor = {
-            nif: l.nif.trim(),
-            centro_custo_id: l.centro_custo_id || null,
-            casa_id: l.casa_id || null,
-            pago_por_cc_id: l.pago_por_tipo === "cc" ? l.pago_por_cc_id || null : null,
-            taxa_plataforma: l.taxa_plataforma,
-          };
-          await guardarClassificacaoFornecedorAction(c);
-          setClassif((prev) => ({ ...prev, [c.nif]: c }));
-        }
-        removerLinha(l.cid);
-        setResultado(res);
-        router.refresh();
-      } else {
-        window.alert(res.erros.join("\n") || "Não foi possível gravar.");
+        });
+        cids.push(l.cid);
       }
-    } finally {
-      setLinhaAGravar(null);
-    }
+      const res = await importarCustosAction(payload);
+      setLinhas((prev) => prev.filter((x) => !cids.includes(x.cid)));
+      setSel((prev) => {
+        const n = new Set(prev);
+        cids.forEach((c) => n.delete(c));
+        return n;
+      });
+      setResultado(res);
+      router.refresh();
+    });
   }
 
   function aplicarASelecionadas() {
@@ -1125,16 +1144,26 @@ export function ImportadorFaturas({
                           <button
                             type="button"
                             className="al-btn"
-                            style={{ padding: "5px 10px", fontSize: 12 }}
+                            style={{
+                              padding: "5px 10px",
+                              fontSize: 12,
+                              ...(classif[l.nif.trim()]
+                                ? { borderColor: "var(--pos)", color: "var(--pos)" }
+                                : {}),
+                            }}
                             title={
                               classif[l.nif.trim()]
-                                ? "Gravar este custo (e atualizar a memória deste fornecedor)"
-                                : "Gravar este custo (e memorizar a classificação deste fornecedor)"
+                                ? "Fornecedor memorizado — clica para atualizar com estes valores (CC pode ficar a branco)"
+                                : "Memorizar esta classificação para o fornecedor (CC pode ficar a branco)"
                             }
-                            onClick={() => gravarLinha(l)}
-                            disabled={!valida || linhaAGravar === l.cid}
+                            onClick={() => memorizarLinha(l)}
+                            disabled={!l.nif.trim() || nifAMemorizar === l.nif.trim()}
                           >
-                            {linhaAGravar === l.cid ? "A gravar…" : "Gravar"}
+                            {nifAMemorizar === l.nif.trim()
+                              ? "A memorizar…"
+                              : classif[l.nif.trim()]
+                                ? "Memorizado ✓"
+                                : "Memorizar"}
                           </button>
                           <button
                             type="button"
@@ -1154,15 +1183,24 @@ export function ImportadorFaturas({
             </table>
           </div>
 
-          <p className="al-hint" style={{ marginTop: 14 }}>
-            Grava <strong>linha a linha</strong> (botão <strong>Gravar</strong> em
-            cada uma) — assim olhas para cada custo antes de o lançares.{" "}
-            {validas.length} pronta(s) ·{" "}
-            {linhas.length - validas.length > 0
-              ? `${linhas.length - validas.length} por completar (faltam campos).`
-              : "sem pendências."}{" "}
-            Total por gravar: {totalImportar.toFixed(2)} €.
-          </p>
+          <div
+            style={{ display: "flex", alignItems: "center", gap: 14, marginTop: 14, flexWrap: "wrap" }}
+          >
+            <button
+              type="button"
+              className="al-btn"
+              onClick={gravarSelecionados}
+              disabled={aGravar || sel.size === 0}
+            >
+              {aGravar ? "A gravar…" : `Gravar ${sel.size} selecionado(s)`}
+            </button>
+            <span className="al-hint" style={{ margin: 0 }}>
+              O <strong>Memorizar</strong> (em cada linha) guarda a classificação do
+              fornecedor para a próxima vez (o CC pode ficar a branco). O{" "}
+              <strong>Gravar selecionados</strong> lança no livro só as linhas que
+              escolheres — {validas.length} de {linhas.length} estão completas.
+            </span>
+          </div>
         </>
       )}
     </div>

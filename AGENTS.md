@@ -214,15 +214,15 @@ remove os lançamentos dela).
     expirar, é preciso religar. Credenciais em `.env.local`: `TOCONLINE_CLIENT_ID/_CLIENT_SECRET/
     _OAUTH_URL/_API_URL/_REDIRECT_URL`. (Não há *client_credentials* na API → não dá sync
     100% automático sem religar de vez em quando.)
-  - **Ecrã de revisão:** **grava-se linha a linha** (botão "Gravar" em cada linha — evita
-    aceitar tudo às cegas; não há "gravar tudo"). Ao gravar, cria o custo e **memoriza a
-    classificação do fornecedor** (`classificacoes_fornecedor`) para pré-preencher as
-    próximas (substitui o antigo 📌). Há seleção de linhas só para a barra "Aplicar"
-    (classificar várias de uma vez — CC/casa/pago-por), filtro por fornecedor/NIF, ordenação
-    por coluna e "selecionar visíveis". Re-puxar não duplica linhas já na lista nem
-    documentos já importados (dedup por `toconline_id`). Filtro de datas **desde/até** (desde
-    = 1 jan do ano; até = último dia do mês atual). A memória é editável/apagável na
-    Configuração (ex.: pôr o CC a branco no Airbnb, que varia de CC).
+  - **Ecrã de revisão:** cada linha tem **"Memorizar"** (guarda a classificação do
+    fornecedor em `classificacoes_fornecedor` — **permite CC a branco**, ex.: Airbnb = só
+    taxa, escolhes o CC a cada fatura) e fica "Memorizado ✓". O lançamento no livro é por
+    **"Gravar selecionados"** (só as linhas escolhidas, nunca "tudo" — evita aceitar às
+    cegas). Seleção também alimenta a barra "Aplicar" (classificar várias — CC/casa/pago-por).
+    Filtro por fornecedor/NIF, ordenação por coluna, "selecionar visíveis". Re-puxar não
+    duplica linhas já na lista nem documentos já importados (dedup por `toconline_id`).
+    Datas **desde/até** (desde = 1 jan do ano; até = último dia do mês atual). A memória é
+    editável/apagável na Configuração.
 - **Gravação** (`importarCustosAction`, `src/lib/actions/importar-custos.ts`): por cada custo
   cria o registo + **uma alocação 100% no CC** escolhido (casa opcional), chama `lancar_custo`
   e arquiva o documento. O ficheiro é **carregado para o bucket pelo browser** (cliente
