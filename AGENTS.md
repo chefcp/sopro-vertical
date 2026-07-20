@@ -115,6 +115,9 @@ App **Next.js (App Router, TypeScript) + Tailwind v4 + Supabase** (auth + `@supa
 - `alocacoes (id, org_id, custo_id, centro_custo_id, casa_id, percentagem)` — repartição do custo.
 - `lancamentos (id, org_id, data, centro_custo_id, casa_id, conta, valor,
   contraparte_pessoa_id, contraparte_cc_id, origem, origem_id, lote, descricao)` — o LIVRO.
+- `lancamentos.editado_manual` (acrescentada): `true` = movimento "martelado" à mão no ecrã
+  Movimentos; `lancar_custo`/`lancar_reserva` **não recalculam** um movimento travado (o
+  cadeado protege as edições). `mov_destravar` solta e regenera do original.
 - `chaves_reparticao (id, org_id, origem_cc_id, conta['resultado'|'iva'|'suprimentos'|
   'tesouraria'], destino_cc_id, peso>0)` — usadas por `redistribuir_conta`.
 - `documentos (id, org_id, entidade_tipo['reserva'|'custo'|'suprimento'], entidade_id,
@@ -276,6 +279,13 @@ remove os lançamentos dela).
   - `lancamentos`: livro completo (de `lancamentos`) com filtros (CC, conta, origem, casa,
     datas, texto); linhas de custo/reserva ligam à origem por `(origem, origem_id)`. A edição
     de um custo mostra a secção "Lançamentos gerados" desse custo.
+  - `movimentos`: **visão por acontecimento** — agrupa os lançamentos por movimento
+    (`origem`+`origem_id`, ou `lote`, ou a própria linha). Cada linha expande e mostra os
+    lançamentos por conta/CC. Permite **martelar** (CC/casa/valor/descrição — `mov_editar_linha`),
+    **acrescentar** (`mov_adicionar_linha`) e **remover** (`mov_remover_linha`) linhas, e
+    **criar movimentos manuais** com vários submovimentos (`mov_criar_manual`). Qualquer
+    edição **trava** o movimento (`editado_manual=true`); "Voltar ao automático" =
+    `mov_destravar`. Todas via RPC SECURITY DEFINER com guarda `user_orgs()`.
 - Tokens de desenho do protótipo (`prototipo-gestao-al.jsx`) em `src/app/globals.css`.
 
 ## Como correr
