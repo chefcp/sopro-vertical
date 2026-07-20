@@ -60,12 +60,20 @@ App **Next.js (App Router, TypeScript) + Tailwind v4 + Supabase** (auth + `@supa
   - Índices únicos parciais `(org_id, ical_uid)` e `(org_id, externo_id)` (WHERE ... NOT NULL)
     ⇒ o upsert do supabase-js por `onConflict` NÃO funciona com eles; faz-se
     select-depois-update/insert manual.
-  - **Ciclo de vida (Fase 2 — LIVRO via trigger, NÃO chamar `lancar_reserva` na app):**
+  - **Ciclo de vida (Fase 4 — LIVRO via trigger, NÃO chamar `lancar_reserva` na app):**
     `validada=false` = rascunho (fora do livro); `validada=true` = fechada (trigger
-    `reserva_ledger`). `lancar_reserva` lança, na `data_faturacao` (fallback check-in):
-    **Resultado = `valor_total − iva_liquidado`** e **IVA = `−iva_liquidado`**. A
-    **tesouraria vem dos `recebimentos`** (um lançamento por recebimento, na sua data);
-    **as taxas de plataforma NÃO entram aqui** (são custos). `faturado` é só informativo.
+    `reserva_ledger`). `lancar_reserva` gera **até 5 lançamentos**:
+    - Na `data_faturacao` (fallback check-in), no **CC da casa**:
+      **Resultado = `valor_total − iva_liquidado`** e **IVA = `−iva_liquidado`**.
+    - **Taxa de plataforma = `valor_total − Σ recebimentos`** (derivada da realidade, não
+      por percentagem) → **Resultado −taxa** no CC da casa, na data de faturação. Só é
+      lançada quando já houve recebimento. **Autoliquidação ⇒ não leva linha de IVA.**
+    - Na data de cada recebimento: **Tesouraria** — a parte do **IVA vai para o CC da
+      empresa (Geral)** ("o IVA fica na empresa") e **o resto para o CC da casa**.
+    Resultado do CC = Tesouraria do CC (fecha); o **saldo de IVA de cada CC = quanto esse
+    CC contribuiu**, que é a base para repartir o reembolso do Estado.
+    ⚠️ **As faturas de comissão do Airbnb/VRBO NÃO se importam como custo** — a taxa já
+    está dentro da reserva; importá-las seria contar duas vezes. `faturado` é só informativo.
     `estado='cancelada'` NÃO tira do livro — só `validada` o faz. `editada_manual` protege
     das importações.
 - `recebimentos (id, org_id, reserva_id→reservas, valor, data, criado_em)` — recebimentos
@@ -80,8 +88,9 @@ App **Next.js (App Router, TypeScript) + Tailwind v4 + Supabase** (auth + `@supa
     Sopro; já não há `'sopro'`). `centros_custo.representa_empresa=true` marca o CC da
     empresa (o Geral). `lancar_custo`: Resultado −base e IVA +iva no(s) CC(s) do custo
     (data da fatura); pagamento (na `data_pagamento`):
-    - **pagador = Geral (empresa):** só **Tesouraria −total no CC do custo** — **SEM
-      suprimentos** (a empresa a pagar não é financiamento externo).
+    - **pagador = Geral (empresa):** **Tesouraria +total no Geral e −total no CC do custo**
+      — **SEM suprimentos** (a empresa a pagar não é financiamento externo). A tesouraria
+      dos custos fecha sempre a zero.
     - **pagador = outro CC (com dono):** **Suprimentos +total e Tesouraria +total no CC
       pagador, Tesouraria −total no CC do custo** (pagador=CC do custo → tesourarias anulam →
       Suprimentos +).
