@@ -288,6 +288,27 @@ remove os lançamentos dela).
     `mov_destravar`. Todas via RPC SECURITY DEFINER com guarda `user_orgs()`.
 - Tokens de desenho do protótipo (`prototipo-gestao-al.jsx`) em `src/app/globals.css`.
 
+## Deploy (produção — Vercel + GitHub)
+
+Repositório: `github.com/chefcp/sopro-vertical` (branch `main`). O Supabase já está na
+nuvem, por isso só falta publicar a app. Passos (o utilizador tem de fazer os que envolvem
+contas/segredos):
+
+1. **Vercel → Add New Project → Import** o repo `sopro-vertical` (framework Next.js,
+   detetado automaticamente). Fica com deploy automático a cada push para `main`.
+2. **Environment Variables** (ver `.env.example` para os nomes; valores a copiar do
+   `.env.local`, que está fora do git): `NEXT_PUBLIC_SUPABASE_URL`,
+   `NEXT_PUBLIC_SUPABASE_ANON_KEY`, `LODGIFY_API_KEY`, `TOCONLINE_*`.
+3. **Endereços que mudam de `localhost` para o domínio real:**
+   - `TOCONLINE_REDIRECT_URL` = `https://<dominio>/api/toconline/callback` **e** gravar o
+     mesmo valor no TOConline (Dados API), senão o "Ligar ao TOConline" falha com
+     `invalid_request`.
+   - **Supabase → Authentication → URL Configuration:** acrescentar o domínio ao *Site URL*
+     e aos *Redirect URLs* (senão o login/magic-link não volta para a app).
+4. **Novos utilizadores:** criar em Supabase → Authentication → Users **e** inserir a linha
+   correspondente em `membros (org_id, user_id, papel)`. Sem `membros`, o RLS deixa entrar
+   mas não mostra dados.
+
 ## Como correr
 
 ```bash
