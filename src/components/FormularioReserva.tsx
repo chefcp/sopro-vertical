@@ -94,6 +94,11 @@ export function FormularioReserva({
   const totalRecebido = recebimentos.reduce((s, r) => s + (Number(r.valor) || 0), 0);
   const bloqueado = !!v.validada;
 
+  // Taxa da plataforma = faturado − recebido (só faz sentido com recebimento).
+  const taxa = totalRecebido > 0 ? arred2(valorTotal - totalRecebido) : 0;
+  const resultadoLiquido = arred2(resultado - Math.max(taxa, 0));
+  const canalPlataforma = v.canal === "airbnb" || v.canal === "vrbo";
+
   const recebimentosJson = JSON.stringify(
     recebimentos
       .filter((r) => Number(r.valor))
@@ -239,6 +244,44 @@ export function FormularioReserva({
           onClick={() => setRecebimentos((ls) => [...ls, { valor: "", data: v.data_checkin }])}>
           + Adicionar recebimento
         </button>
+
+        {totalRecebido > 0 && (
+          <div
+            className="al-card"
+            style={{
+              padding: 12,
+              marginTop: 12,
+              borderColor: taxa < 0 ? "var(--neg)" : "var(--line)",
+            }}
+          >
+            <div style={{ display: "flex", gap: 18, flexWrap: "wrap", fontSize: 13 }}>
+              <span>Faturado <span className="al-num">{eur(valorTotal)}</span></span>
+              <span>Recebido <span className="al-num">{eur(totalRecebido)}</span></span>
+              <span>
+                Taxa de plataforma{" "}
+                <span className={`al-num ${taxa > 0 ? "al-neg" : ""}`}>{eur(-Math.max(taxa, 0))}</span>
+              </span>
+              <span style={{ marginLeft: "auto" }}>
+                Resultado líquido <span className="al-num al-pos">{eur(resultadoLiquido)}</span>
+              </span>
+            </div>
+            {taxa < 0 && (
+              <p className="al-num al-neg" style={{ fontSize: 12.5, margin: "8px 0 0" }}>
+                ⚠ Recebeste mais do que faturaste — confirma os valores.
+              </p>
+            )}
+            {taxa === 0 && canalPlataforma && (
+              <p className="al-hint" style={{ fontSize: 12.5, margin: "8px 0 0", color: "var(--neg)" }}>
+                ⚠ Taxa a zero num canal de plataforma. Confirma que registaste o
+                <strong> valor líquido que caiu na conta</strong> (costuma ser inferior ao faturado).
+              </p>
+            )}
+            <p className="al-hint" style={{ margin: "6px 0 0" }}>
+              A taxa é calculada sozinha (faturado − recebido) e entra como Resultado
+              negativo. Não a lances como custo.
+            </p>
+          </div>
+        )}
       </div>
 
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 16, flexWrap: "wrap" }}>
@@ -283,8 +326,11 @@ export function FormularioReserva({
       </div>
       <p className="al-hint" style={{ margin: 0 }}>
         <strong>Faturação</strong> lança Resultado (s/ IVA) e IVA na data de faturação.
-        Cada <strong>recebimento</strong> entra em Tesouraria na sua data. As taxas de
-        plataforma entram à parte, como custos.
+        Cada <strong>recebimento</strong> entra em Tesouraria na sua data — o IVA vai
+        para o <strong>Geral</strong> (fica na empresa) e o resto para o CC da casa. A{" "}
+        <strong>taxa da plataforma</strong> é calculada automaticamente
+        (faturado − recebido): <strong>não</strong> a lances como custo nem importes a
+        fatura de comissão do Airbnb/VRBO.
       </p>
     </form>
   );
