@@ -39,7 +39,8 @@ export type ImportarResultado = {
 function valida(c: CustoImportado): string | null {
   if (!c.fornecedor?.trim()) return "fornecedor em falta";
   if (!c.data) return "data em falta";
-  if (!c.centro_custo_id) return "centro de custo em falta";
+  // Taxa de plataforma não precisa de CC (não gera lançamentos — só fica registada).
+  if (!c.taxa_plataforma && !c.centro_custo_id) return "centro de custo em falta";
   if (!Number.isFinite(c.valor_base) || c.valor_base < 0) return "base inválida";
   if (!Number.isFinite(c.iva) || c.iva < 0) return "IVA inválido";
   if (!c.taxa_plataforma) {
@@ -170,17 +171,20 @@ export async function importarCustosAction(
       continue;
     }
 
-    const { error: errAloc } = await supabase.from("alocacoes").insert({
-      org_id: org,
-      custo_id: custo.id,
-      centro_custo_id: c.centro_custo_id,
-      casa_id: c.casa_id || null,
-      percentagem: 100,
-    });
-    if (errAloc) {
-      await supabase.from("custos").delete().eq("id", custo.id);
-      erros.push(`${etiqueta}: ${errAloc.message}`);
-      continue;
+    // Alocação 100% no CC (as taxas de plataforma podem não ter CC — não geram livro).
+    if (c.centro_custo_id) {
+      const { error: errAloc } = await supabase.from("alocacoes").insert({
+        org_id: org,
+        custo_id: custo.id,
+        centro_custo_id: c.centro_custo_id,
+        casa_id: c.casa_id || null,
+        percentagem: 100,
+      });
+      if (errAloc) {
+        await supabase.from("custos").delete().eq("id", custo.id);
+        erros.push(`${etiqueta}: ${errAloc.message}`);
+        continue;
+      }
     }
 
     const { error: errRpc } = await lancarCusto(supabase, custo.id);

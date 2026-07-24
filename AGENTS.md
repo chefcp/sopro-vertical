@@ -100,8 +100,10 @@ App **Next.js (App Router, TypeScript) + Tailwind v4 + Supabase** (auth + `@supa
     pagamento). A lista mostra a etiqueta "por pagar", tem filtro **"só por pagar"** e a ação
     em massa **"Marcar como pago"** (`marcarPagoCustosAction(ids, cc, data)`: define pagador +
     data e re-chama `lancar_custo`; ignora as taxas de plataforma).
-  - `taxa_plataforma=true` (Airbnb/VRBO/Stripe): só Resultado −base e IVA +iva, **sem perna
-    de pagamento** (já vem descontada no recebimento líquido da reserva).
+  - `taxa_plataforma=true` (Airbnb/VRBO/Stripe): **NÃO gera lançamentos** — a taxa já está
+    dentro da reserva (faturado − recebido). O custo fica só **registado** (dedup por
+    `toconline_id`/`atcud`) para "calar o ruído" nas puxadas; não precisa de CC nem de
+    alocação. `lancar_custo` faz `return` cedo quando `taxa_plataforma`.
   - `data_pagamento` (acrescentada): data do pagamento, separada da data da fatura.
   - `atcud` (acrescentada): chave fiscal única do documento (campo H do QR), para detetar
     faturas repetidas na importação. Índice único parcial `(org_id, atcud) WHERE atcud NOT NULL`.
