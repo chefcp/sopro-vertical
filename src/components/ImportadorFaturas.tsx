@@ -57,6 +57,10 @@ function nomeSeguro(nome: string): string {
   return nome.replace(/[^a-zA-Z0-9._-]/g, "_").slice(0, 120);
 }
 
+// Plataformas cuja comissão NÃO é custo (a taxa já está dentro da reserva).
+const PLATAFORMAS = /airbnb|stripe|vrbo|homeaway/i;
+const ehTaxaPlataforma = (nome: string) => PLATAFORMAS.test(nome || "");
+
 function normalizarData(s: string): string {
   const t = s.trim();
   if (/^\d{4}-\d{2}-\d{2}$/.test(t)) return t;
@@ -202,16 +206,18 @@ export function ImportadorFaturas({
       const texto = await lerQrDeFicheiro(file);
       const q = texto ? parseFaturaQr(texto) : null;
       if (q) {
+        const nome = nomesPorNif[q.nif] ?? "";
         novas.push(
           novaLinha({
             nif: q.nif,
             nifAdquirente: q.nifAdquirente,
             atcud: q.atcud,
-            fornecedor: nomesPorNif[q.nif] ?? "",
+            fornecedor: nome,
             descricao: [q.tipoDoc, q.numero].filter(Boolean).join(" "),
             data: q.data ?? "",
             valor_base: String(q.valorBase),
             iva: String(q.iva),
+            taxa_plataforma: ehTaxaPlataforma(nome),
             file,
             ficheiro: file.name,
           }),
@@ -295,6 +301,7 @@ export function ImportadorFaturas({
           pago_por_tipo: pagoCc ? "cc" : "sopro",
           pago_por_cc_id: pagoCc ? pagoCc.id : "",
           origem: "excel",
+          taxa_plataforma: ehTaxaPlataforma(fornecedor),
         });
       });
     setLinhas((prev) => [...prev, ...novas]);
@@ -318,10 +325,12 @@ export function ImportadorFaturas({
     );
     const porAdicionar = res.novos.filter((d) => !jaNaLista.has(d.toconline_id));
     const repetidosNaLista = res.novos.length - porAdicionar.length;
-    const novas = porAdicionar.map((d) =>
-      novaLinha({
+    const novas = porAdicionar.map((d) => {
+      const nome = (d.fornecedor_nif && nomesPorNif[d.fornecedor_nif]) || d.fornecedor_nome;
+      const taxa = ehTaxaPlataforma(nome);
+      return novaLinha({
         nif: d.fornecedor_nif,
-        fornecedor: (d.fornecedor_nif && nomesPorNif[d.fornecedor_nif]) || d.fornecedor_nome,
+        fornecedor: nome,
         atcud: d.atcud,
         descricao: [d.tipo, d.numero].filter(Boolean).join(" "),
         data: d.data,
@@ -329,9 +338,10 @@ export function ImportadorFaturas({
         iva: String(d.iva),
         toconline_id: d.toconline_id,
         origem: "toconline",
+        taxa_plataforma: taxa,
         aviso: !d.fornecedor_nome && !d.fornecedor_nif ? "Sem fornecedor — confirma" : undefined,
-      }),
-    );
+      });
+    });
     setLinhas((prev) => [...prev, ...novas]);
     const partes = [`Lidos ${res.totalLidos}`];
     if (res.jaImportados > 0) partes.push(`${res.jaImportados} já importado(s)`);
