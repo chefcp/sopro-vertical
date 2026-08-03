@@ -74,8 +74,8 @@ App **Next.js (App Router, TypeScript) + Tailwind v4 + Supabase** (auth + `@supa
     CC contribuiu**, que é a base para repartir o reembolso do Estado.
     ⚠️ **As faturas de comissão do Airbnb/VRBO NÃO se importam como custo** — a taxa já
     está dentro da reserva; importá-las seria contar duas vezes. `faturado` é só informativo.
-    `estado='cancelada'` NÃO tira do livro — só `validada` o faz. `editada_manual` protege
-    das importações.
+    `estado='cancelada'` ⇒ **fora do livro** (lancar_reserva apaga e não recria; a reserva
+    fica no histórico mas não conta). `editada_manual` protege das importações.
 - `recebimentos (id, org_id, reserva_id→reservas, valor, data, criado_em)` — recebimentos
   (líquidos) de cada reserva; trigger `recebimento_ledger` re-lança a reserva (se validada).
   RLS `org_isolation`.
